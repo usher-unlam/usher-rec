@@ -12,7 +12,12 @@ from matplotlib import pyplot as plt
 from PIL import Image
 
 import cv2
-cap = cv2.VideoCapture('http://admin:admin@192.168.1.33:8081')
+#ipcamUrl = 0
+#ipcamUrl = 'http://admin:admin@192.168.1.33:8081'
+#ipcamUrl = 'http://admin:usher@192.168.0.9:8081'
+ipcamUrl = 'http://admin:usher@irv.sytes.net:8081'
+
+cap = cv2.VideoCapture(ipcamUrl)
 
 sys.path.append("..")
 
@@ -25,6 +30,7 @@ PATH_TO_CKPT = 'modelo_congelado/frozen_inference_graph.pb'
 PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
 
 NUM_CLASSES = 90
+FRAMES_OMITIDOS = 10 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
 
 detection_graph = tf.Graph()
 with detection_graph.as_default():
@@ -64,25 +70,29 @@ with detection_graph.as_default():
     detection_scores = detection_graph.get_tensor_by_name('detection_scores:0')
     detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
     num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+    i = FRAMES_OMITIDOS
     while True:
-      
-      ret, image_np = cap.read()    
-      # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-      image_np_expanded = np.expand_dims(image_np, axis=0)
+      ret, image_np = cap.read()
+      if (i < FRAMES_OMITIDOS):
+        i += 1
+      else:
+        i = 0    
+        # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+        image_np_expanded = np.expand_dims(image_np, axis=0)
 
-      # Actual detection.      
-      (boxes, scores, classes, num) = sess.run([detection_boxes, detection_scores, detection_classes, num_detections],feed_dict={image_tensor: image_np_expanded})
-      # Visualization of the results of a detection.
-      vis_util.visualize_boxes_and_labels_on_image_array(
-      image_np,
-      np.squeeze(boxes),
-      np.squeeze(classes).astype(np.int32),
-      np.squeeze(scores),
-      category_index,
-      use_normalized_coordinates=True,
-      line_thickness=8)
+        # Actual detection.      
+        (boxes, scores, classes, num) = sess.run([detection_boxes, detection_scores, detection_classes, num_detections],feed_dict={image_tensor: image_np_expanded})
+        # Visualization of the results of a detection.
+        vis_util.visualize_boxes_and_labels_on_image_array(
+        image_np,
+        np.squeeze(boxes),
+        np.squeeze(classes).astype(np.int32),
+        np.squeeze(scores),
+        category_index,
+        use_normalized_coordinates=True,
+        line_thickness=8)
 
-      cv2.imshow('object detection', image_np)
-      if cv2.waitKey(25) & 0xFF == ord('q'):
-        cv2.destroyAllWindows()
-        break
+        cv2.imshow('object detection', image_np)
+        if cv2.waitKey(25) & 0xFF == ord('q'):
+          cv2.destroyAllWindows()
+          break
