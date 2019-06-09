@@ -29,6 +29,8 @@ import socket
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
 
+import banca as banca
+
 # begin wxGlade: dependencies
 # end wxGlade
 
@@ -39,10 +41,11 @@ from object_detection.utils import visualization_utils as vis_util
 class MyFrame(wx.Frame):
     def __init__(self, *args, **kwds):
         
+        
         # begin wxGlade: MyFrame.__init__
         kwds["style"] = kwds.get("style", 0) | wx.DEFAULT_FRAME_STYLE
         wx.Frame.__init__(self, *args, **kwds)
-        self.SetSize((712, 522))
+        self.SetSize((650, 700))
         
         # Menu Bar
         self.frame_menubar = wx.MenuBar()
@@ -65,20 +68,20 @@ class MyFrame(wx.Frame):
         self.__do_layout()
 
         # end wxGlade
-       
+        
         #Create objects
 
         self.CaptureWidth = 640
         self.CaptureHeight = 480
 
         #Para Camara en vivo
-        self.Screen1Width = 320
-        self.Screen1Height = 240
+        self.Screen1Width = 550
+        self.Screen1Height = 270
         self.Screen1 = wx.StaticBitmap(self, size = (self.Screen1Width, self.Screen1Height)) # Static bitmaps for OpenCV images
         
         #Para resultado del analisis
-        self.Screen2Width = 320
-        self.Screen2Height = 240
+        self.Screen2Width = 550
+        self.Screen2Height = 270
         #self.Screen2 = wx.StaticBitmap(self, size = (self.Screen2Width, self.Screen2Height)) # Static bitmaps for OpenCV images
 
         # Add objects to sizer
@@ -89,40 +92,58 @@ class MyFrame(wx.Frame):
         path_locations='configuracion'
         self.images_location=self.xml_to_locations(path_locations)
         self.locations_state=[]
-
+         
+        self.imagenes_bancas_select = { "ocupada": 'imagenes/bancaOcupadaSelect.png', "libre": 'imagenes/bancaLibreSelect.png', "indeterminado": 'imagenes/bancaIndeterminadoSelect.png' }
+        #Creo tantas bancas como posiciones guardadas en el xml y las guardo en una lista
+        #Las StaticBitmap contendran las imagenes de los estados de las bancas
         self.screen_list=[]
-
         for i in self.images_location:
-           self.screen_list.append((wx.StaticBitmap(self, size = (self.Screen2Width, self.Screen2Height)),i[0],i[1]))
+           sb=wx.StaticBitmap(self, size = (self.Screen2Width, self.Screen2Height))
+           self.screen_list.append(banca.Banca(sb,i[0],i[1],i[4]))
+
+        #Creo un diccionario para consultar datos de cada banca, al hacer click en una banca
+        self.dict_bancas= {} # create an empty dictionary
+        for i in range(len(self.screen_list)):
+          self.dict_bancas[self.screen_list[i].staticBitmap]=self.screen_list[i]     
            
+        #Seteo estado,posicion y evento de cada StaticBitmap
         for i in self.screen_list:
-           imageFile = 'imagenes/bancaOcupada.png'
-           bitmap = wx.Bitmap(imageFile)
-           imageFile = escalar_bitmap(bitmap, 30, 30)
-           i[0].SetBitmap(wx.Bitmap(imageFile))
-   
-           ymin = int(i[2])
-           xmin = int(i[1])
+
+           #Seteo imagen
+           imageFile = 'imagenes/bancaLibre.png'
+           i.setImagen(imageFile)
+             
+           #Seteo posicion proporcional al tamaño del screen y al tamaño de la captura
+           xmin,ymin=i.getPosicionXML()
            xpos=int((xmin/self.CaptureWidth)*self.Screen2Width)
            ypos=int((ymin/self.CaptureHeight)*self.Screen2Height)
            x, y = self.sizer_3.GetPosition()
-           i[0].SetPosition(wx.Point(x+xpos,y+ypos))
-                   
-           self.sizer_3.Add(i[0],0,0,0)
-           
+           i.setPosicionVentana(x+xpos,y+ypos)  
 
+           #Seteo el eventos
+           i.staticBitmap.Bind(wx.EVT_LEFT_UP, self.bancaClick)
+           
+           #Seteo cursor sobre la banca
+           i.staticBitmap.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
+
+           #Lo agrego al sizer3
+           self.sizer_3.Add(i.staticBitmap,0,0,0)
+           
 
         #x, y = self.sizer_3.GetPosition()
         #self.Screen2.SetPosition(wx.Point(x+100,y+100))
 
         self.Centre()
+        
+        #Maximizo ventana para que ocupe todo el escritorio menos la barra de tareas
+        c_x, c_y, c_w, c_h = wx.ClientDisplayRect()
+        self.SetSize((c_w, c_h))
+        self.SetPosition((c_x, c_y))
+        
+        #Ventana mitad de escritorio
+        self.SetSize((c_w/2, c_h))
+        self.SetPosition((c_w/2, c_y))
 
-        #self.CaptureWidth = 640
-        #self.CaptureHeight = 480
-
-        #self.Screen2Width = 320
-        #self.Screen2Height = 240
- 
         ipcamUrl = 'http://admin:usher@192.168.1.33:8081'
         ipcam = {}
         ipcamDesc = 'Celular'
@@ -167,10 +188,7 @@ class MyFrame(wx.Frame):
           label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
           categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
           self.category_index = label_map_util.create_category_index(categories)
-        
-          
-
-                           
+                          
         except IOError as e:
             print(time.now(), "Error abriendo socket: ", ipcamUrl)
         except KeyboardInterrupt as e:
@@ -205,8 +223,6 @@ class MyFrame(wx.Frame):
               self.fps=40
               self.timer.Start(1000./self.fps)    # timer interval
         
-
-        
     def __set_properties(self):
         # begin wxGlade: MyFrame.__set_properties
         self.SetTitle("USHER V1.0")
@@ -228,9 +244,6 @@ class MyFrame(wx.Frame):
 
     def OnTimer(self, event):
     
-        #ret,img = self.capture.read()
-        ########################################################3
-             
         ret, image_np = self.capture.read()
 
         if ret == True:
@@ -239,9 +252,7 @@ class MyFrame(wx.Frame):
          pass
         else:
          print("Falló la captura")
-         exit(1)
-
-        
+         exit(1)       
 
         if self.analisis==True:
           if self.FRECUENCIA_CNN==0: 
@@ -319,35 +330,40 @@ class MyFrame(wx.Frame):
         self.Screen1.SetBitmap(wxbmp)
         
         
-        #imageFile = 'imagenes/bancaOcupada.png'
-        #bitmap = wx.Bitmap(imageFile)
-        #imageFile = escalar_bitmap(bitmap, 30, 30)
-        #
-        #self.Screen2.SetBitmap(wx.Bitmap(imageFile))
-
-        #x, y = self.sizer_3.GetPosition()
-        #self.Screen2.SetPosition(wx.Point(x+100,y+100))
-
+        #Indice para recorrer los estados actuales de las bancas
         estado=0
-        imagenes_bancas = { "[OK]": 'imagenes/bancaOcupada.png', "[ ]": 'imagenes/bancaLibre.png', "[?]": 'imagenes/bancaIndeterminado.png' }
 
+        imagenes_bancas = { "[OK]": 'imagenes/bancaOcupada.png', "[ ]": 'imagenes/bancaLibre.png', "[?]": 'imagenes/bancaIndeterminado.png' }
+        nombres_estados_bancas = { "[OK]": "ocupada", "[ ]": "libre", "[?]": "indeterminado" }
+        
+        #self.screen_list.append((sb,i[0],i[1],i[4],"libre",False))
+
+        #Seteo estado,posicion de cada StaticBitmap
         for i in self.screen_list:
-                     
-           if self.locations_state:
-             imageFile = imagenes_bancas[self.locations_state[estado]]
+
+           #Seteo imagen
+           
+           if self.locations_state: #Si la lista no esta vacia
+               i.setEstado(nombres_estados_bancas[self.locations_state[estado]]) 
+               if i.getSeleccionado()==False:
+                 imageFile = imagenes_bancas[self.locations_state[estado]]
+               else:
+                 imageFile = self.imagenes_bancas_select[i.getEstado()]
            else:
-             imageFile = 'imagenes/bancaLibre.png'
-          
-           bitmap = wx.Bitmap(imageFile)
-           imageFile = escalar_bitmap(bitmap, 30, 30)
-           i[0].SetBitmap(wx.Bitmap(imageFile))
-     
-           ymin = int(i[2])
-           xmin = int(i[1])
+               if i.getSeleccionado()==False:
+                 imageFile = imagenes_bancas["[ ]"]
+               else:
+                 imageFile = self.imagenes_bancas_select["libre"]
+            
+           
+           i.setImagen(imageFile)
+             
+           #Seteo posicion proporcional al tamaño del screen y al tamaño de la captura
+           xmin,ymin=i.getPosicionXML()
            xpos=int((xmin/self.CaptureWidth)*self.Screen2Width)
            ypos=int((ymin/self.CaptureHeight)*self.Screen2Height)
            x, y = self.sizer_3.GetPosition()
-           i[0].SetPosition(wx.Point(x+xpos,y+ypos))
+           i.setPosicionVentana(x+xpos,y+ypos)  
            estado+=1
 
 
@@ -377,6 +393,22 @@ class MyFrame(wx.Frame):
           self.analisis=True
         event.Skip()
  # end of class MyFrame
+
+    #Al hacer click sobre una banca, cambio la imagen a seleccionada
+    def bancaClick(self, event): 
+        
+       #El metodo event.GetEventObject() devuelve el StaticBitmap clickeado
+       #Mediante el StaticBitmap seleccionado consulto el diccionario dict_bancas StaticBitmap->Objeto banca   
+       print("Hiciste click sobre la banca: "+str( self.dict_bancas[event.GetEventObject()].getNroBanca() ) ) 
+
+       #Seteo todas las StaticBitmap des-seleccionadas
+       for i in self.screen_list:
+         self.dict_bancas[i.getStaticBitmap()].setSeleccionado(False)  
+
+       #Seteo estado seleccionado True
+       self.dict_bancas[event.GetEventObject()].setSeleccionado(True)   
+  
+       event.Skip()
 
     def urlTest(self,host, port):
         
@@ -409,7 +441,8 @@ class MyFrame(wx.Frame):
                 value = (int(member[4][0].text), #xmin
                          int(member[4][1].text), #ymin
                          int(member[4][2].text), #xmax
-                         int(member[4][3].text)  #ymax
+                         int(member[4][3].text), #ymax
+                         int(member[0].text), #nro banca                        
                          )
                 locations_list.append(value)
         return locations_list
@@ -422,12 +455,6 @@ class MyFrame(wx.Frame):
         if (dx>=0) and (dy>=0):
             return dx*dy
             
-def escalar_bitmap(bitmap, width, height):
-    image = wx.ImageFromBitmap(bitmap)
-    image = image.Scale(width, height, wx.IMAGE_QUALITY_HIGH)
-    result = wx.BitmapFromImage(image)
-    return result
-
 class MyApp(wx.App):
 
     def OnInit(self):
