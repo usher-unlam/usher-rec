@@ -4,11 +4,13 @@ import wx
 import numpy as np
 
 class Banca():
-  def __init__(self,stBitmap,x,y,nro):
+  def __init__(self,stBitmap,xmin,ymin,xmax,ymax,nro):
     #StaticBitmap(que contiene imagen),xmin,ymin,nroBanca,estado,seleccionado
     self.staticBitmap=stBitmap #Contendra la imagen
-    self.xminXML=x #coordenada x left XML
-    self.yminXML=y #coordenada y top XML
+    self.xminXML=xmin #coordenada x left XML
+    self.yminXML=ymin #coordenada y top XML
+    self.xmaxXML=xmax #coordenada x left XML + Widht
+    self.ymaxXML=ymax #coordenada y top XML + Height
     self.xminVentana=0 #coordenada x left dentro de la ventana
     self.yminVentana=0 #coordenada y top dentro de la ventana
     self.nro=nro #nro de banca

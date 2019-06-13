@@ -44,7 +44,7 @@ class MyFrame(wx.Frame):
         # begin wxGlade: MyFrame.__init__
         kwds["style"] = kwds.get("style", 0) | wx.DEFAULT_FRAME_STYLE
         wx.Frame.__init__(self, *args, **kwds)
-        self.SetSize((650, 700))
+        self.SetSize((812, 522))
         
         # Menu Bar
         self.frame_menubar = wx.MenuBar()
@@ -62,6 +62,12 @@ class MyFrame(wx.Frame):
         self.frame_menubar.Append(wxglade_tmp_menu, "CNN")
         self.SetMenuBar(self.frame_menubar)
         # Menu Bar end
+        self.label_1 = wx.StaticText(self, wx.ID_ANY, "Ubicaciones:")
+        self.cantUbicaciones = wx.StaticText(self, wx.ID_ANY, "0")
+        self.label_2 = wx.StaticText(self, wx.ID_ANY, "Ocupadas: ")
+        self.cantOcupadas = wx.StaticText(self, wx.ID_ANY, "0")
+        self.label_3 = wx.StaticText(self, wx.ID_ANY, "Libres:")
+        self.cantLibres = wx.StaticText(self, wx.ID_ANY, "0")
 
         self.__set_properties()
         self.__do_layout()
@@ -81,6 +87,10 @@ class MyFrame(wx.Frame):
 
         img = wx.Image('imagenes/bancaLibre.png').Scale(self.Screen1Width, self.Screen1Height, wx.IMAGE_QUALITY_HIGH)
         self.wxbmp = img.ConvertToBitmap()
+        self.num=-1
+        self.boxes=0
+        self.scores=0
+        self.classes=0
 		
         self.sizer_2.Add( self.Screen1, 1, wx.FIXED_MINSIZE |wx.ALL, 5 )
                      
@@ -107,7 +117,8 @@ class MyFrame(wx.Frame):
         #Obtengo la posicion, dentro de la toma completa, de cada ubicacion 
         path_locations='configuracion'
         self.images_location=self.xml_to_locations(path_locations)
-
+        self.cantUbicaciones.Label=str(len(self.images_location))
+        self.cantLibres.Label=str(len(self.images_location))
         #Lista para guardar el estado de cada banca:
         # [OK] = ocupada
         # [ ] = libre
@@ -122,7 +133,7 @@ class MyFrame(wx.Frame):
         for i in self.images_location:
            sb=wx.StaticBitmap(self, size = (self.Screen2Width, self.Screen2Height))
            #sb.SetPosition(wx.Point(0,0))  
-           self.screen_list.append(banca.Banca(sb,i[0],i[1],i[4]))
+           self.screen_list.append(banca.Banca(sb,i[0],i[1],i[2],i[3],i[4]))
 
         #Creo un diccionario para consultar datos de cada banca, al hacer click en una banca
         self.dict_bancas= {} # create an empty dictionary
@@ -150,7 +161,7 @@ class MyFrame(wx.Frame):
            i.staticBitmap.SetCursor(wx.Cursor(wx.CURSOR_HAND))
 
  
-        ipcamUrl = 'http://admin:usher@192.168.1.34:8081'
+        ipcamUrl = 'http://admin:usher@192.168.1.33:8081'
         ipcam = {}
         ipcamDesc = 'Celular'
         ipcam[ipcamDesc] = urlparse(ipcamUrl)
@@ -231,6 +242,7 @@ class MyFrame(wx.Frame):
 
               
               self.Bind(wx.EVT_CLOSE, self.onClose)
+              self.Bind(wx.EVT_LEFT_UP, self.VentanaClick)
 
               #Estado del programa
               self.STATE_RUNNING = 1
@@ -250,15 +262,38 @@ class MyFrame(wx.Frame):
         # begin wxGlade: MyFrame.__set_properties
         self.SetTitle("USHER V1.0")
         self.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, 0, "Arial"))
+        self.label_1.SetForegroundColour(wx.Colour(0, 0, 255))
+        self.label_1.SetFont(wx.Font(12, wx.FONTFAMILY_SCRIPT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, 0, ""))
+        self.cantUbicaciones.SetForegroundColour(wx.Colour(0, 0, 255))
+        self.cantUbicaciones.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, 0, ""))
+        self.label_2.SetForegroundColour(wx.Colour(0, 143, 57))
+        self.label_2.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, 0, ""))
+        self.cantOcupadas.SetForegroundColour(wx.Colour(0, 143, 57))
+        self.cantOcupadas.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, 0, ""))
+        self.label_3.SetForegroundColour(wx.Colour(204, 51, 51))
+        self.label_3.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, 0, ""))
+        self.cantLibres.SetForegroundColour(wx.Colour(203, 50, 53))
+        self.cantLibres.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, 0, ""))
         # end wxGlade
 
     def __do_layout(self):
         # begin wxGlade: MyFrame.__do_layout
         self.sizer_1 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, "DASHBOARD"), wx.VERTICAL)
         self.sizer_3 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, "Mapa de ubicaciones"), wx.VERTICAL)
-        self.sizer_2 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, "Cámara en vivo"), wx.VERTICAL)
+        grid_sizer_1 = wx.GridBagSizer(0, 0)
+        self.sizer_2 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, u"Cámara en vivo"), wx.VERTICAL)
         self.sizer_2.Add((0, 0), 0, 0, 0)
         self.sizer_1.Add(self.sizer_2, 1, wx.EXPAND, 0)
+        grid_sizer_1.Add(30, 20, (0, 0), (1, 1), 0, 0)
+        grid_sizer_1.Add(self.label_1, (0, 1), (1, 1), 0, 0)
+        grid_sizer_1.Add(self.cantUbicaciones, (0, 2), (1, 1), 0, 0)
+        grid_sizer_1.Add(30, 20, (0, 3), (1, 1), 0, 0)
+        grid_sizer_1.Add(self.label_2, (0, 4), (1, 1), 0, 0)
+        grid_sizer_1.Add(self.cantOcupadas, (0, 5), (1, 1), 0, 0)
+        grid_sizer_1.Add(30, 20, (0, 6), (1, 1), 0, 0)
+        grid_sizer_1.Add(self.label_3, (0, 7), (1, 1), 0, 0)
+        grid_sizer_1.Add(self.cantLibres, (0, 8), (1, 1), 0, 0)
+        self.sizer_3.Add(grid_sizer_1, 0, wx.TOP, 9)
         self.sizer_3.Add((0, 0), 0, 0, 0)
         self.sizer_1.Add(self.sizer_3, 1, wx.EXPAND, 0)
         self.SetSizer(self.sizer_1)
@@ -267,7 +302,7 @@ class MyFrame(wx.Frame):
 
     def OnTimer(self, event):
         
-        ret, image_np = self.capture.read()
+        ret, self.image_np = self.capture.read()
         
         if ret == True:
           #print("Captura OK")
@@ -279,16 +314,16 @@ class MyFrame(wx.Frame):
         if self.analisis==True:
           if self.FRECUENCIA_CNN==0: 
               # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-              image_np_expanded = np.expand_dims(image_np, axis=0)
+              image_np_expanded = np.expand_dims(self.image_np, axis=0)
 
               # Actual detection.      
-              (boxes, scores, classes, num) = self.sess.run([self.detection_boxes, self.detection_scores, self.detection_classes, self.num_detections],feed_dict={self.image_tensor: image_np_expanded})
+              (self.boxes, self.scores, self.classes, self.num) = self.sess.run([self.detection_boxes, self.detection_scores, self.detection_classes, self.num_detections],feed_dict={self.image_tensor: image_np_expanded})
               
-              box = np.squeeze(boxes)
+              box = np.squeeze(self.boxes)
               #Alto del frame en pixeles
-              height = np.size(image_np, 0)
+              height = np.size(self.image_np, 0)
               #Ancho del frame en pixeles
-              width = np.size(image_np, 1)
+              width = np.size(self.image_np, 1)
               
               ##Comparo cada rectangulo del xml con cada box de la CNN
               ##Si el porcentaje de coincidencia es mayor a PORC_INTERSECCION guardo "[OK] "
@@ -308,8 +343,8 @@ class MyFrame(wx.Frame):
                 rxml = Rectangle(xmin, ymin, xmax, ymax)
                 #Para cada posicion recorro las boxes buscando coincidencia
                 coincide=False
-                for index,value in enumerate(classes[0]):
-                 if scores[0,index] > 0.3:
+                for index,value in enumerate(self.classes[0]):
+                 if self.scores[0,index] > 0.3:
                    if self.category_index.get(value).get('name')=="person":
                      ymin = (int(box[index,0]*height))
                      xmin = (int(box[index,1]*width))
@@ -330,26 +365,23 @@ class MyFrame(wx.Frame):
               print ("Se detectaron "+str(personas)+" personas\n")
               print (self.locations_state)
               print ("\n")
-     
+              
+              self.cantOcupadas.Label=str(personas)
+              self.cantLibres.Label=str(len(self.images_location)-personas)
               # Visualization of the results of a detection.
               vis_util.visualize_boxes_and_labels_on_image_array(
-              image_np,
-              np.squeeze(boxes),
-              np.squeeze(classes).astype(np.int32),
-              np.squeeze(scores),
+              self.image_np,
+              np.squeeze(self.boxes),
+              np.squeeze(self.classes).astype(np.int32),
+              np.squeeze(self.scores),
               self.category_index,
               use_normalized_coordinates=True,
-              line_thickness=8)
+              line_thickness=4)
               self.FRECUENCIA_CNN=self.FREC
           else:
               self.FRECUENCIA_CNN-=1
         ###############################################
-        image_np = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB) #Convert to RGB ready to display to screen
-        image_np = cv2.resize(image_np, (self.Screen1Width, self.Screen1Height), interpolation = cv2.INTER_AREA) #Return a 320x240 RGB image
-        h, w = image_np.shape[:2] # get the height and width of the source image for buffer construction
-        self.wxbmp = wx.Bitmap.FromBuffer(w, h, image_np) # make a wx style bitmap using the buffer converter
-
-               
+              
         #Indice para recorrer los estados actuales de las bancas
         estado=0
 
@@ -389,7 +421,55 @@ class MyFrame(wx.Frame):
            ypos=int((ymin/self.CaptureHeight)*self.Screen2Height)
            x, y = self.sizer_3.GetPosition()
            i.setPosicionVentana(x+xpos,y+ypos)  
+
+           #if self.num!=-1:
+           #  # Visualization of the results of a detection.
+           #  vis_util.visualize_boxes_and_labels_on_image_array(
+           #  self.image_np,
+           #  np.squeeze(self.boxes),
+           #  np.squeeze(self.classes).astype(np.int32),
+           #  np.squeeze(self.scores),
+           #  self.category_index,
+           #  use_normalized_coordinates=True,
+           #  line_thickness=4)
+
+           #Dibujo rectangulo azul en camara de video indicando que ubicacion tengo apuntada con el mouse
+           if i.getMouseEncima()==True:
+                         
+             vis_util.draw_bounding_box_on_image_array(
+             self.image_np,
+             i.yminXML,
+             i.xminXML,
+             i.ymaxXML,
+             i.xmaxXML,
+             color='red', #Color invertido, queda blue
+             thickness=3,
+             display_str_list= (str(i.nro)),
+             use_normalized_coordinates=False)
+           
+           #Dibujo rectangulo rojo en camara de video indicando que ubicacion seleccione con el mouse
+           if i.getSeleccionado()==True:
+                         
+             vis_util.draw_bounding_box_on_image_array(
+             self.image_np,
+             i.yminXML,
+             i.xminXML,
+             i.ymaxXML,
+             i.xmaxXML,
+             color='Blue', #Color invertido, queda red
+             thickness=3,
+             display_str_list= (str(i.nro)),
+             use_normalized_coordinates=False)
+
+
            estado+=1
+
+
+
+        self.image_np = cv2.cvtColor(self.image_np, cv2.COLOR_BGR2RGB) #Convert to RGB ready to display to screen
+        self.image_np = cv2.resize(self.image_np, (self.Screen1Width, self.Screen1Height), interpolation = cv2.INTER_AREA) #Return a 320x240 RGB image
+        h, w = self.image_np.shape[:2] # get the height and width of the source image for buffer construction
+        self.wxbmp = wx.Bitmap.FromBuffer(w, h, self.image_np) # make a wx style bitmap using the buffer converter
 
         #self.Refresh()
         self.Screen1.Refresh()
@@ -457,12 +537,19 @@ class MyFrame(wx.Frame):
   
        event.Skip()
 
+    #Al hacer click sobre la ventana, cambio el estado de seleccionado False a todas las bancas
+    def VentanaClick(self, event): 
+        
+       #Seteo todas las StaticBitmap des-seleccionadas
+       for i in self.screen_list:
+         self.dict_bancas[i.getStaticBitmap()].setSeleccionado(False)  
+
     #Al pasar el mouse sobre una banca
     def onMouseOverBanca(self, event): 
        
        #Seteo estado mouseEncima True
        self.dict_bancas[event.GetEventObject()].setMouseEncima(True) 
-       
+
        event.Skip()
 
     #Al sacar el mouse de encima de una banca
