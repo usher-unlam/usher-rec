@@ -9,7 +9,6 @@ import time
 import cv2
 import numpy as np
 import os
-import six.moves.urllib as urllib
 import sys
 import tarfile
 import tensorflow as tf
@@ -68,7 +67,8 @@ class MyFrame(wx.Frame):
         self.__do_layout()
 
         # end wxGlade
-        
+             
+
         #Create objects
 
         self.CaptureWidth = 640
@@ -76,64 +76,23 @@ class MyFrame(wx.Frame):
 
         #Para Camara en vivo
         self.Screen1Width = 550
-        self.Screen1Height = 270
+        self.Screen1Height = 300
         self.Screen1 = wx.StaticBitmap(self, size = (self.Screen1Width, self.Screen1Height)) # Static bitmaps for OpenCV images
-        
+
+        img = wx.Image('imagenes/bancaLibre.png').Scale(self.Screen1Width, self.Screen1Height, wx.IMAGE_QUALITY_HIGH)
+        self.wxbmp = img.ConvertToBitmap()
+		
+        self.sizer_2.Add( self.Screen1, 1, wx.FIXED_MINSIZE |wx.ALL, 5 )
+                     
+        self.Screen1.Bind(wx.EVT_ERASE_BACKGROUND, self.onEraseBackground)              
+        self.Screen1.Bind(wx.EVT_PAINT, self.onPaint)
+
+        # Add objects to sizer
+        #self.sizer_2.Add(self.Screen1, 0, wx.EXPAND | wx.ALL, 10)
+
         #Para resultado del analisis
         self.Screen2Width = 550
         self.Screen2Height = 270
-        #self.Screen2 = wx.StaticBitmap(self, size = (self.Screen2Width, self.Screen2Height)) # Static bitmaps for OpenCV images
-
-        # Add objects to sizer
-        self.sizer_2.Add(self.Screen1, 0, wx.EXPAND | wx.ALL, 10)
-        #self.sizer_3.Add(self.Screen2, 0, 0, 10)
-
-        #Obtengo la posicion, dentro de la toma completa, de cada ubicacion 
-        path_locations='configuracion'
-        self.images_location=self.xml_to_locations(path_locations)
-        self.locations_state=[]
-         
-        self.imagenes_bancas_select = { "ocupada": 'imagenes/bancaOcupadaSelect.png', "libre": 'imagenes/bancaLibreSelect.png', "indeterminado": 'imagenes/bancaIndeterminadoSelect.png' }
-        #Creo tantas bancas como posiciones guardadas en el xml y las guardo en una lista
-        #Las StaticBitmap contendran las imagenes de los estados de las bancas
-        self.screen_list=[]
-        for i in self.images_location:
-           sb=wx.StaticBitmap(self, size = (self.Screen2Width, self.Screen2Height))
-           self.screen_list.append(banca.Banca(sb,i[0],i[1],i[4]))
-
-        #Creo un diccionario para consultar datos de cada banca, al hacer click en una banca
-        self.dict_bancas= {} # create an empty dictionary
-        for i in range(len(self.screen_list)):
-          self.dict_bancas[self.screen_list[i].staticBitmap]=self.screen_list[i]     
-           
-        #Seteo estado,posicion y evento de cada StaticBitmap
-        for i in self.screen_list:
-
-           #Seteo imagen
-           imageFile = 'imagenes/bancaLibre.png'
-           i.setImagen(imageFile)
-             
-           #Seteo posicion proporcional al tamaño del screen y al tamaño de la captura
-           xmin,ymin=i.getPosicionXML()
-           xpos=int((xmin/self.CaptureWidth)*self.Screen2Width)
-           ypos=int((ymin/self.CaptureHeight)*self.Screen2Height)
-           x, y = self.sizer_3.GetPosition()
-           i.setPosicionVentana(x+xpos,y+ypos)  
-
-           #Seteo el eventos
-           i.staticBitmap.Bind(wx.EVT_LEFT_UP, self.bancaClick)
-           
-           #Seteo cursor sobre la banca
-           i.staticBitmap.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
-
-           #Lo agrego al sizer3
-           self.sizer_3.Add(i.staticBitmap,0,0,0)
-           
-
-        #x, y = self.sizer_3.GetPosition()
-        #self.Screen2.SetPosition(wx.Point(x+100,y+100))
-
-        self.Centre()
         
         #Maximizo ventana para que ocupe todo el escritorio menos la barra de tareas
         c_x, c_y, c_w, c_h = wx.ClientDisplayRect()
@@ -144,7 +103,54 @@ class MyFrame(wx.Frame):
         self.SetSize((c_w/2, c_h))
         self.SetPosition((c_w/2, c_y))
 
-        ipcamUrl = 'http://admin:usher@192.168.1.33:8081'
+  
+        #Obtengo la posicion, dentro de la toma completa, de cada ubicacion 
+        path_locations='configuracion'
+        self.images_location=self.xml_to_locations(path_locations)
+
+        #Lista para guardar el estado de cada banca:
+        # [OK] = ocupada
+        # [ ] = libre
+        # [?] = indeterminado
+        self.locations_state=[]
+         
+        self.imagenes_bancas_select = { "ocupada": 'imagenes/bancaOcupadaSelect.png', "libre": 'imagenes/bancaLibreSelect.png', "indeterminado": 'imagenes/bancaIndeterminadoSelect.png' }
+
+        #Creo tantas bancas como posiciones guardadas en el xml y las guardo en una lista
+        #Las StaticBitmap contendran las imagenes de los estados de las bancas
+        self.screen_list=[]
+        for i in self.images_location:
+           sb=wx.StaticBitmap(self, size = (self.Screen2Width, self.Screen2Height))
+           #sb.SetPosition(wx.Point(0,0))  
+           self.screen_list.append(banca.Banca(sb,i[0],i[1],i[4]))
+
+        #Creo un diccionario para consultar datos de cada banca, al hacer click en una banca
+        self.dict_bancas= {} # create an empty dictionary
+        for i in range(len(self.screen_list)):
+          self.dict_bancas[self.screen_list[i].staticBitmap]=self.screen_list[i]     
+           
+        
+
+        #Seteo estado,posicion y evento de cada StaticBitmap
+        for i in self.screen_list:
+
+           #Seteo posicion proporcional al tamaño del screen y al tamaño de la captura
+           xmin,ymin=i.getPosicionXML()
+           xpos=int((xmin/self.CaptureWidth)*self.Screen2Width)
+           ypos=int((ymin/self.CaptureHeight)*self.Screen2Height)
+           x, y = self.sizer_3.GetPosition()
+           i.setPosicionVentana(x+xpos,y+ypos)  
+
+           #Seteo el eventos
+           i.staticBitmap.Bind(wx.EVT_LEFT_UP, self.bancaClick)
+           i.staticBitmap.Bind(wx.EVT_ENTER_WINDOW, self.onMouseOverBanca)
+           i.staticBitmap.Bind( wx.EVT_LEAVE_WINDOW, self.onMouseOutBanca)
+
+           #Seteo cursor sobre la banca
+           i.staticBitmap.SetCursor(wx.Cursor(wx.CURSOR_HAND))
+
+ 
+        ipcamUrl = 'http://admin:usher@192.168.1.34:8081'
         ipcam = {}
         ipcamDesc = 'Celular'
         ipcam[ipcamDesc] = urlparse(ipcamUrl)
@@ -174,8 +180,7 @@ class MyFrame(wx.Frame):
           PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
         
           NUM_CLASSES = 90
-          FRAMES_OMITIDOS = 10 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
-        
+                  
           self.detection_graph = tf.Graph()
           with self.detection_graph.as_default():
             od_graph_def = tf.GraphDef()
@@ -214,12 +219,30 @@ class MyFrame(wx.Frame):
               self.detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
               self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
               self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+
+              #Creo un timer para:
+              # 1) Actualizar la información en pantalla
+              # 2) Activar la CNN y obtener datos del analisis
               self.timer = wx.Timer(self)
               self.Bind(wx.EVT_TIMER, self.OnTimer)
 
+              #Inicialmente la CNN está inactiva
               self.analisis=False
+
+              
+              self.Bind(wx.EVT_CLOSE, self.onClose)
+
+              #Estado del programa
+              self.STATE_RUNNING = 1
+              self.STATE_CLOSING = 2
+              self.state = self.STATE_RUNNING
+              
+              #Cantidad de ciclos del timer que la CNN no trabaja
+              #Esto es para evitar lag
               self.FREC=20
               self.FRECUENCIA_CNN=self.FREC
+                
+              #Seteo cada cuanto tiempo se activará el timer
               self.fps=40
               self.timer.Start(1000./self.fps)    # timer interval
         
@@ -233,7 +256,7 @@ class MyFrame(wx.Frame):
         # begin wxGlade: MyFrame.__do_layout
         self.sizer_1 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, "DASHBOARD"), wx.VERTICAL)
         self.sizer_3 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, "Mapa de ubicaciones"), wx.VERTICAL)
-        self.sizer_2 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, u"Cámara en vivo"), wx.VERTICAL)
+        self.sizer_2 = wx.StaticBoxSizer(wx.StaticBox(self, wx.ID_ANY, "Cámara en vivo"), wx.VERTICAL)
         self.sizer_2.Add((0, 0), 0, 0, 0)
         self.sizer_1.Add(self.sizer_2, 1, wx.EXPAND, 0)
         self.sizer_3.Add((0, 0), 0, 0, 0)
@@ -243,24 +266,22 @@ class MyFrame(wx.Frame):
         # end wxGlade
 
     def OnTimer(self, event):
-    
+        
         ret, image_np = self.capture.read()
-
+        
         if ret == True:
-         # Display the resulting frame
-         #print("Captura OK")
-         pass
+          #print("Captura OK")
+          pass
         else:
-         print("Falló la captura")
-         exit(1)       
+          print("Falló la captura")
+          exit(1)       
 
         if self.analisis==True:
           if self.FRECUENCIA_CNN==0: 
               # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
               image_np_expanded = np.expand_dims(image_np, axis=0)
+
               # Actual detection.      
-              
-              
               (boxes, scores, classes, num) = self.sess.run([self.detection_boxes, self.detection_scores, self.detection_classes, self.num_detections],feed_dict={self.image_tensor: image_np_expanded})
               
               box = np.squeeze(boxes)
@@ -275,7 +296,7 @@ class MyFrame(wx.Frame):
               self.locations_state=[]
               personas=0
               Rectangle = namedtuple('Rectangle', 'xmin ymin xmax ymax')
-              PORC_INTERSECCION=0.5
+              PORC_INTERSECCION=0.3
               
               #Recorro las posiciones del xml
               for j in self.images_location:
@@ -326,52 +347,59 @@ class MyFrame(wx.Frame):
         image_np = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB) #Convert to RGB ready to display to screen
         image_np = cv2.resize(image_np, (self.Screen1Width, self.Screen1Height), interpolation = cv2.INTER_AREA) #Return a 320x240 RGB image
         h, w = image_np.shape[:2] # get the height and width of the source image for buffer construction
-        wxbmp = wx.Bitmap.FromBuffer(w, h, image_np) # make a wx style bitmap using the buffer converter
-        self.Screen1.SetBitmap(wxbmp)
-        
-        
+        self.wxbmp = wx.Bitmap.FromBuffer(w, h, image_np) # make a wx style bitmap using the buffer converter
+
+               
         #Indice para recorrer los estados actuales de las bancas
         estado=0
 
         imagenes_bancas = { "[OK]": 'imagenes/bancaOcupada.png', "[ ]": 'imagenes/bancaLibre.png', "[?]": 'imagenes/bancaIndeterminado.png' }
         nombres_estados_bancas = { "[OK]": "ocupada", "[ ]": "libre", "[?]": "indeterminado" }
-        
-        #self.screen_list.append((sb,i[0],i[1],i[4],"libre",False))
 
         #Seteo estado,posicion de cada StaticBitmap
         for i in self.screen_list:
 
            #Seteo imagen
-           
            if self.locations_state: #Si la lista no esta vacia
                i.setEstado(nombres_estados_bancas[self.locations_state[estado]]) 
-               if i.getSeleccionado()==False:
-                 imageFile = imagenes_bancas[self.locations_state[estado]]
+
+               if i.getMouseEncima()==True:
+                  imageFile = self.imagenes_bancas_select[i.getEstado()]
                else:
-                 imageFile = self.imagenes_bancas_select[i.getEstado()]
+                  if i.getSeleccionado()==False:
+                     imageFile = imagenes_bancas[self.locations_state[estado]]
+                  else:
+                     imageFile = self.imagenes_bancas_select[i.getEstado()]
+
            else:
-               if i.getSeleccionado()==False:
-                 imageFile = imagenes_bancas["[ ]"]
+               if i.getMouseEncima()==True:
+                 imageFile = self.imagenes_bancas_select[i.getEstado()]
                else:
-                 imageFile = self.imagenes_bancas_select["libre"]
-            
-           
+                 if i.getSeleccionado()==False:
+                   imageFile = imagenes_bancas["[ ]"]
+                 else:
+                   imageFile = self.imagenes_bancas_select["libre"]
+
            i.setImagen(imageFile)
              
            #Seteo posicion proporcional al tamaño del screen y al tamaño de la captura
+           separador=300
            xmin,ymin=i.getPosicionXML()
-           xpos=int((xmin/self.CaptureWidth)*self.Screen2Width)
+           xpos=int((xmin/(self.CaptureWidth-separador))*self.Screen2Width)-separador
            ypos=int((ymin/self.CaptureHeight)*self.Screen2Height)
            x, y = self.sizer_3.GetPosition()
            i.setPosicionVentana(x+xpos,y+ypos)  
            estado+=1
 
+        #self.Refresh()
+        self.Screen1.Refresh()
+        for i in range(len(self.screen_list)):
+          self.screen_list[i].staticBitmap.Refresh()
 
-        self.Refresh()
-        
 
         self.timer.Start(1000./self.fps)
-
+        event.Skip()
+         
 
     def configuraciónClick(self, event):  # wxGlade: MyFrame.<event_handler>
         print("Event handler 'configuraciónClick' not implemented!")
@@ -394,7 +422,26 @@ class MyFrame(wx.Frame):
         event.Skip()
  # end of class MyFrame
 
-    #Al hacer click sobre una banca, cambio la imagen a seleccionada
+
+    #Al cerrar la ventana paro el timer y elimino el frame
+    def onClose(self, event):
+        if not self.state == self.STATE_CLOSING:
+            self.state = self.STATE_CLOSING
+            self.timer.Stop()
+            self.Destroy()    
+
+    #Evento que se activa cuando se hace Refresh de algun StaticBitmap(Video o bancas)
+    def onPaint(self, event):
+       if self.state == self.STATE_RUNNING:
+          #Se usa un buffer para evitar parpadeo de la imagen
+          dc = wx.BufferedPaintDC(self.Screen1)
+          dc.DrawBitmap(self.wxbmp, 0, 0)    
+    
+    #El fondo no se borra para evitar el parpadeo de la imagen
+    def onEraseBackground(self, event):
+        return        
+        
+    #Al hacer click sobre una banca, cambio el estado de seleccionado a todas las bancas
     def bancaClick(self, event): 
         
        #El metodo event.GetEventObject() devuelve el StaticBitmap clickeado
@@ -409,6 +456,23 @@ class MyFrame(wx.Frame):
        self.dict_bancas[event.GetEventObject()].setSeleccionado(True)   
   
        event.Skip()
+
+    #Al pasar el mouse sobre una banca
+    def onMouseOverBanca(self, event): 
+       
+       #Seteo estado mouseEncima True
+       self.dict_bancas[event.GetEventObject()].setMouseEncima(True) 
+       
+       event.Skip()
+
+    #Al sacar el mouse de encima de una banca
+    def onMouseOutBanca(self, event): 
+  
+       #Seteo estado mouseEncima False
+       self.dict_bancas[event.GetEventObject()].setMouseEncima(False) 
+
+       event.Skip()
+    
 
     def urlTest(self,host, port):
         
@@ -431,7 +495,7 @@ class MyFrame(wx.Frame):
         return out
 
     #A partir de un xml previamente cargado con labelImage, obtengo la posicion de cada ubicacion
-    #(correspondiente a cada banca) dentro de la toma de video completa
+    #(correspondiente a cada banca) dentro de la toma de video completa y el nro de banca
     def xml_to_locations(self,path):
         locations_list = []
         for xml_file in glob.glob(path + '/*.xml'):

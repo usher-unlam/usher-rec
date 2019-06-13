@@ -14,9 +14,11 @@ class Banca():
     self.nro=nro #nro de banca
     self.estado="libre" #estado: libre,ocupada,indeterminado
     self.seleccionado=False #seleccionado:True,False
-    self.tamImag=50
+    self.mouseEncima=False #mouseEncima:True,False
+    self.tamImag=70
 
   def setImagen(self,path):
+    
     bitmap = wx.Bitmap(path)
     path = escalar_bitmap(bitmap, self.tamImag, self.tamImag)
     self.staticBitmap.SetBitmap(wx.Bitmap(path))
@@ -28,6 +30,9 @@ class Banca():
 
   def setSeleccionado(self,seleccionado):
     self.seleccionado=seleccionado
+
+  def setMouseEncima(self,mouseEncima):
+    self.mouseEncima=mouseEncima  
 
   def setEstado(self,estado):
         self.estado=estado
@@ -44,18 +49,15 @@ class Banca():
   def getSeleccionado(self):
        return self.seleccionado
 
+  def getMouseEncima(self):
+       return self.mouseEncima
+
   def getStaticBitmap(self):
        return self.staticBitmap
 
 def escalar_bitmap(bitmap, width, height):
-    image = wx.ImageFromBitmap(bitmap)
+    bitmap = bitmap.ConvertToImage() 
+    image = wx.Image(bitmap)
     image = image.Scale(width, height, wx.IMAGE_QUALITY_HIGH)
-    result = wx.BitmapFromImage(image)
+    result = wx.Bitmap(image)
     return result
-
-#   
-#   
-# #calculate distance from another point
-# def get_distance(self, other_rocket):
-#  
-#   return distance  
