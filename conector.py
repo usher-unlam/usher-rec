@@ -37,7 +37,7 @@ class Camaras():
     CONN_TIMEOUT = 0.6
     CONN_CHECK_TIMEOUT = 5 #si en 5 segundos no tuvo conexión, comprueba de nuevo
     
-    def __init__(self, c=[]):
+    def __init__(self, c=[], CONN_TIMEOUT=0.6 ,CONN_CHECK_TIMEOUT=5):
         print("Inicializa Camaras")
         if len(c) > 0:
             self.cams = c
@@ -46,6 +46,8 @@ class Camaras():
         self.camstat = {}
         self.caps = {}
         self.frames = {}
+        self.CONN_TIMEOUT = CONN_TIMEOUT
+        self.CONN_CHECK_TIMEOUT = CONN_CHECK_TIMEOUT
 
     @staticmethod
     def urlTest(host, port):
@@ -103,6 +105,10 @@ class Camaras():
     def captureFrame(self):
         #self.caps = []
         self.frames = []
+        #comprobar cada cierto TIMEOUT la conexión de cámaras 
+        self.checkConn()
+        if len(self.cams) == 0:
+            print("No hay cámaras activas configuradas.")
         for cam in self.cams:
             if self.camstat[cam["nombre"]][1] == CamStatus.OK:
                 try:
@@ -129,6 +135,9 @@ class Camaras():
                     err = "Error CV2: " + cam["nombre"] + " (" + e + ")"
                     self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
                     #print(time.now(), "Error CV2: ", e)
+            else:
+                print(cam["nombre"], " con error: ",self.camstat[cam["nombre"]])
+        return self.frames
     
 class DataSource():
     __metaclass__ = ABCMeta

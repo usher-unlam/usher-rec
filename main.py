@@ -11,7 +11,7 @@ from datetime import datetime as time
 
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
-        self.FRECUENCIA_CNN = 20 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
+        self.conf = {"frecCNN": 20} #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
         
             #   #Cantidad de ciclos del timer que la CNN no trabaja
             #   #Esto es para evitar lag
@@ -36,8 +36,8 @@ class CamServer():
         #obtiene estado de ubicaciones (útil al recuperar post falla)
         b = self.source.readOcupyState()
         
-        self.cams = cn.Camaras(c)
-        #comprobar conexión de cámaras
+        self.cams = cn.Camaras(c,self.conf["CONN_TIMEOUT"],self.conf["CONN_CHECK_TIMEOUT"])
+        #comprobar conexión de cámaras por primera vez
         self.cams.checkConn()
         self.ubicaciones = ubi.Ubicacion(b,self.cams)
         #iniciar red neuronal
@@ -84,15 +84,17 @@ class CamServer():
     ''' Proceso background de servidor '''
     def runService(self):
         try:
-            i = 0
+            i = self.conf["frecCNN"]
             #bucle infinito (funciona en background como servicio)
             while not self.keyStop():
                 self.cams.captureFrame()
-                if (i < self.FRECUENCIA_CNN):
+                if (i < self.conf["frecCNN"]):
                     i += 1
                 else:
                     i = 0 
                     print(i)
+                    if(len(self.cams.frames)):
+                        frame = self.cams.frames[0]
   ####                  rect = self.rn.detect(self.cams.frames, "personaSentada", 
   ####                                        float(self.conf["ppersona"]))
   ####                  self.ubicaciones.addDetection(rect)
@@ -111,8 +113,8 @@ class CamServer():
         except KeyboardInterrupt as e:
             print(time.now(), "Detenido por teclado.")
             
-        except BaseException as e:
-            print(time.now(), "Error desconocido: ", e)
+    #    except BaseException as e:
+    #        print(time.now(), "Error desconocido: ", e)
 
 if __name__ == "__main__":
     serverName = "SVR1"
