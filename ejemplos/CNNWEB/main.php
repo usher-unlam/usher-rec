@@ -2,12 +2,20 @@
 
 
 //Ejecutar script python y guardar print en $output
+/*
 ob_start();
 
 passthru('C:\Users\Administrador\AppData\Local\Programs\Python\Python36\python.exe C:\AppServ\www\CNNWEB\scriptpython.py');
 
 $output = ob_get_clean(); 
 echo $output;
+*/
+
+//$orden = system( "C:\Users\Administrador\AppData\Local\Programs\Python\Python36\python.exe C:\AppServ\www\CNNWEB\scriptpython.py >>out.txt 2>>error.txt &" );
+$cmd="C:\Users\Administrador\AppData\Local\Programs\Python\Python36\python.exe C:\AppServ\www\CNNWEB\scriptpython.py >>out.txt 2>>error.txt";
+pclose(popen("start /B ". $cmd, "r"));
+echo "jlhlj";
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////77
 
 //Insertar $valor en base de datos
