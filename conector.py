@@ -27,9 +27,9 @@ class CamStatus(IntEnum):
     ERR_CONNTN = 3
     ERR_CV2CAP = 4
 
-''' 'nombre': 'cam1', 'minBanca': [ANCHOpx, ALTOpx], 
+''' 'nombre': 'cam1', 'minUbicacion': [ANCHOpx, ALTOpx], 
         'ip': '192.168.0.10', 'desc': 'camara del techo', 
-        'bancas': [
+        'ubicaciones': [
           {'nro': 1, 'coord': [X1, Y1]}, 
           {'nro': 2, 'coord': [X2, Y2]}, 
  '''
@@ -47,18 +47,19 @@ class Camaras():
         self.caps = []
         self.frames = []
     
-    def getBancasFromCams(self):
-        bancas = []
+    def getUbicacionesFromCams(self):
+        ubicaciones = []
         yxyx = []
         for cam in self.cams:
-            for ban in cam.bancas:
-                bancas[ban["nro"]].append((cam,ban["coord"],ban["yxyx"]))
+            for ban in cam.ubicaciones:
+                ubicaciones[ban["nro"]].append((cam,ban["coord"],ban["yxyx"]))
                 yxyx[cam.nombre].append(ban["yxyx"])
-        return (bancas,yxyx);
+        return (ubicaciones,yxyx);
         
-#    def addCam(self, c={}):
-#        self.cams.append(c)
-        
+    #    def addCam(self, c={}):
+    #        self.cams.append(c)
+    
+    @staticmethod
     def urlTest(host, port):
         out = (CamStatus.OK ,"")
         try:
@@ -85,17 +86,17 @@ class Camaras():
         for cam in self.cams:
             if (not self.camstat[cam.nombre] 
                 or self.camstat[cam.nombre][0] < tlimit):
-##TODO: Chequear si no es url (ej: 0 o "file.mp4")
+    ##TODO: Chequear si no es url (ej: 0 o "file.mp4")
                 url = urlparse(cam.url)
                 out, msj = Camaras.urlTest(url.hostname,url.port)
                 self.setCamStat(cam.nombre, out, msj)
     
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):
         self.camstat[cam] = (time.now(), estado, msj)
-##TODO: comprobar si es necesario eliminar caps ante cualquier error/falla
+    ##TODO: comprobar si es necesario eliminar caps ante cualquier error/falla
         if (estado != CamStatus.OK):
             self.caps[cam] = None
-##TODO: Loguear conexión fallida
+    ##TODO: Loguear conexión fallida
     
     def captureFrame(self):
         #self.caps = []
@@ -156,21 +157,21 @@ class DataSource():
         pass
         
 class FileSource(DataSource):
-    def __init__(self):
-        DataSource.__init__(self)
+    def __init__(self, camServer):
+        DataSource.__init__(self, camServer)
         print("inicia FileSource")
         pass
 
 class DBSource(DataSource):
     #{user="root",passwd="12345678",svr="localhost",db="usher_rec"}
     def __init__(self, camServer, connData):
-        DataSource.__init__(self)
+        DataSource.__init__(self, camServer)
         print("inicia DBSource")
         self.conn = mysql.connector.connect(user=connData['user'], 
                                            password=connData['passwd'],
                                            host=connData['svr'],
                                            database=connData['db'])
-##TODO: chequear conexión BBDD
+    ##TODO: chequear conexión BBDD
         self.cursor = self.conn.cursor()
         
     def readSvrInfo(self):
@@ -187,11 +188,11 @@ class DBSource(DataSource):
         return (status,server)
         
     def keepAlive(self):
-#        script = "INSERT INTO camserver (id,status,config)"
-#                            "VALUES (%s,%s, (select z.config from camserver as z "
-#                            "where z.id='BASE' LIMIT 1))"
-#                            "ON DUPLICATE KEY UPDATE alive = null, "
-#                            "status = VALUES(status)"
+    #        script = "INSERT INTO camserver (id,status,config)"
+    #                            "VALUES (%s,%s, (select z.config from camserver as z "
+    #                            "where z.id='BASE' LIMIT 1))"
+    #                            "ON DUPLICATE KEY UPDATE alive = null, "
+    #                            "status = VALUES(status)"
         script = ("INSERT INTO camserver (id,status,config) " 
                   "VALUES (%s,%s, (select z.config from camserver as z " 
                   "where z.id='BASE' LIMIT 1))" 
@@ -202,9 +203,9 @@ class DBSource(DataSource):
 
     '''Leer info de cámaras de BD
         Output: <class 'list'> [{
-        'nombre': 'cam1', 'minBanca': [ANCHOpx, ALTOpx], 
+        'nombre': 'cam1', 'minUbicacion': [ANCHOpx, ALTOpx], 
         'ip': '192.168.0.10', 'desc': 'camara del techo', 
-        'bancas': [
+        'ubicaciones': [
           {'nro': 1, 'coord': [X1, Y1], 'size'}, 
           {'nro': 2, 'coord': [X2, Y2]}, 
         ]}] '''
@@ -222,13 +223,13 @@ class DBSource(DataSource):
             self.cursor.execute("UPDATE camara SET "
                                 "config = %s "
                                 "WHERE nombre = %s and activa = true",
-                                (json.dump(cam),cam.nombre))
+                                (json.dumps(cam),cam.nombre))
         self.conn.commit()
     
-    '''Leer info de ocupación de bancas de BBDD
+    '''Leer info de ocupación de ubicaciones de BBDD
         Output: <class 'list'> ['0', '0', '0'] '''
     def readOcupyState(self):
-        self.cursor.execute("SELECT estadoBancas FROM estado "
+        self.cursor.execute("SELECT estadoUbicaciones FROM estado "
                             "WHERE camserver = %s" 
                             "ORDER BY tstamp DESC LIMIT 1", (self.camsvr))
         reg = self.cursor.fetchone()
@@ -239,7 +240,7 @@ class DBSource(DataSource):
         
     def writeOcupyState(self, newState=""):
         if newState != "":
-            self.cursor.execute("INSERT INTO estado (camserver, estadoBancas) "
+            self.cursor.execute("INSERT INTO estado (camserver, estadoUbicaciones) "
                                 "VALUES (%s, %s)", (self.camsvr, newState ))
             self.conn.commit()
        

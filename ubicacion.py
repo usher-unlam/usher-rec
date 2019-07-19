@@ -43,13 +43,13 @@ class RN():
                 print("Detection Classes:",self.detection_classes)
                 self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
 
-##TODO: comprobar errores en carga de RN
+    ##TODO: comprobar errores en carga de RN
     
     def detect(self, frames, classFilter="person", scoreFilter=0.5):
         det = 0
         rect = []
-#        rcent = []
-#        rdims = []
+    #        rcent = []
+    #        rdims = []
         self.boxes = []; self.scores = []; self.classes = []; self.num = []
         for k,f in frames.items():
             if f:
@@ -81,16 +81,17 @@ class RN():
                             xmax = (int(box[index,3] * width))
                             #operado como (Y,X) a diferencia de Rectangle
                             rect[k].append( (box[index] * [height,width,height,width]).astype(int))
-##TODO: calcular centro y dimensiones de forma matricial
+    ##TODO: calcular centro y dimensiones de forma matricial
                             #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
-#                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
-#                            rcent[k].append(cbox)
-#                            dbox = (ymax-ymin,xmax-xmin)
-#                            rdims[k].append(dbox) #dimension: (alto,ancho)
+    #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
+    #                            rcent[k].append(cbox)
+    #                            dbox = (ymax-ymin,xmax-xmin)
+    #                            rdims[k].append(dbox) #dimension: (alto,ancho)
                             #print('Silla ',index,' [Xmin,Ymin,Xmax,Ymax]=',rbox,' Centro=',cbox,' Dimensiones:',dbox)
         return rect
     
     #Intersection Over Union (intersection / union) available in mrcnn.utils.compute_overlaps()
+    @staticmethod
     def compute_iou(box, boxes, box_area, boxes_area):
         """Calculates IoU of the given box with the array of the given boxes.
         box: 1D vector [y1, x1, y2, x2]
@@ -110,6 +111,7 @@ class RN():
         iou = intersection / union
         return iou
     
+    @staticmethod
     def compute_overlaps(boxes1, boxes2):
         """Computes IoU overlaps between two sets of boxes.
         boxes1, boxes2: [N, (y1, x1, y2, x2)].
@@ -127,37 +129,38 @@ class RN():
             overlaps[:, i] = RN.compute_iou(box2, boxes1, area2[i], area1)
         return overlaps
     
+    @staticmethod
     def fusion(a, b):  
         # espera (ymin,xmin,ymax,xmax) para a y b
         return (min(a[0], b[0]),min(a[1],b[1]),max(a[2],b[2]),max(a[3],b[3]))
 
 
-class Banca():
+class Ubicacion():
     def __init__(self, bstat, cams):
         self.estado = bstat
         self.estados = [] #histórico de estados de ocupación
-        #Obtener referencias de bancas x cámara, Ymin,Xmin,Ymax,Xmax x banca
-        self.bancasCam, self.yxyxCam = cams.getBancasFromCams()
+        #Obtener referencias de ubicaciones x cámara, Ymin,Xmin,Ymax,Xmax x ubicacion
+        self.ubicacionesCam, self.yxyxCam = cams.getUbicacionesFromCams()
 
-    ''' Agregar reconocimiento y evaluar estado contra bancas'''
+    ''' Agregar reconocimiento y evaluar estado contra ubicaciones'''
     def addDetection(self, rect):
         for k,r in rect.items():
             #recorro camaras y sus rectángulos reconocidos
             if len(r) > 0:
-                #obtiene recuadro mínimo desde configuración de banca
-                dimmin = np.array(self.bancasCam[k][0]["minBanca"])
+                #obtiene recuadro mínimo desde configuración de ubicacion
+                dimmin = np.array(self.ubicacionesCam[k][0]["minUbicacion"])
                 print('Dimensión Mínima:',dimmin.shape,'\n',dimmin)
                 #calcular centros de rectángulos
                 pass
                 ##obtengo centros
-                ##obtengo bancas por cámara
-                ##identificar rectángulos con minBanca por cámara
-                ##calcular iou y overlap con bancas de la cámara
+                ##obtengo ubicaciones por cámara
+                ##identificar rectángulos con minUbicacion por cámara
+                ##calcular iou y overlap con ubicaciones de la cámara
     
     ''' Identifica un rectángulo en una cámara específica
-        out: coordenadas=(Y * H_minBanca, X * W_minBanca)'''
+        out: coordenadas=(Y * H_minUbicacion, X * W_minUbicacion)'''
     def identify(self, cam, rect):
-        dimmin = np.array(self.bancasCam[cam][0]["minBanca"])
+        dimmin = np.array(self.ubicacionesCam[cam][0]["minUbicacion"])
         cent = np.trunc(np.concatenate(
                 (np.expand_dims(
                         np.divide(rect[:, 0] + rect[:, 2],2),

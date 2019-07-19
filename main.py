@@ -2,84 +2,85 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
+import cv2
 
-import bancas as bca
-import camaras as cam
+import ubicacion as ubi
+import conector as cn
 
-
+from datetime import datetime as time
 
 class CamServer():
     from datetime import datetime as time
     def __init__(self, nombre="", dbConfig={}):
         self.FRAMES_OMITIDOS = 10 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
         self.nom = nombre
-        self.source = cam.DBSource(self,dbConfig)
+        self.source = cn.DBSource(self,dbConfig)
         #Procesa setup y estado suspend    
-        self.processNewState(Status.SUSPENDING)
+        self.processNewState(cn.Status.SUSPENDING)
         
     def setup(self):
         #obtiene configuración de servidor, salvo que no exista y toma la BASE
         newStatus, self.conf = self.source.readSvrInfo()
-##TODO: chequear newStatus no es asignado
-##TODO: chequear configuración cargada correctamente
-        #obtiene configuración de cámaras (ip/url,bancas)
+    ##TODO: chequear newStatus no es asignado
+    ##TODO: chequear configuración cargada correctamente
+        #obtiene configuración de cámaras (ip/url,ubicaciones)
         c = self.source.readCamInfo() ##debería indicar cams a buscar
-        #obtiene estado de bancas (útil al recuperar post falla)
+        #obtiene estado de ubicaciones (útil al recuperar post falla)
         b = self.source.readOcupyState()
         
-        self.cams = cam.Camaras(c)
+        self.cams = cn.Camaras(c)
         #comprobar conexión de cámaras
         self.cams.checkConn()
-        self.bancas = bca.Bancas(b,c)
+        self.ubicaciones = ubi.Ubicacion(b,c)
         #iniciar red neuronal
         PATH_TO_CKPT = 'modelo_congelado/frozen_inference_graph.pb'
         PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
         PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
-        self.rn = RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
+        self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
 
         
         
     def start(self):
-        self.status = Status.WORKING
+        self.status = cn.Status.WORKING
     
     def suspend(self):
-        self.status = Status.SUSPENDED
+        self.status = cn.Status.SUSPENDED
     
     ''' Procesar nuevo estado de servidor (control externo)
     - Se recibe status=[STARTING,RESTARTING,SUSPENDING]
     - Se procesan funciones: setup, start, suspend
     - Solo procesa cuando el newStatus difiere del actual '''
-    def processNewState(self, newStatus=Status.OFF):
+    def processNewState(self, newStatus=cn.Status.OFF):
         if (self.status != newStatus):
-            if (self.status == Status.OFF 
-                or newStatus == Status.RESTARTING):
+            if (self.status == cn.Status.OFF 
+                or newStatus == cn.Status.RESTARTING):
                 #Recargar configuracion servidor
                 self.setup() 
-            if (self.status in [Status.OFF,Status.SUSPENDED]
-                and newStatus in [Status.STARTING,Status.RESTARTING]):
+            if (self.status in [cn.Status.OFF,cn.Status.SUSPENDED]
+                and newStatus in [cn.Status.STARTING,cn.Status.RESTARTING]):
                 #iniciar servidor / comenzar reconocimiento
                 self.start()
-            if (self.status == Status.WORKING
-                and newStatus == Status.SUSPENDING):
+            if (self.status == cn.Status.WORKING
+                and newStatus == cn.Status.SUSPENDING):
                 #suspender servidor / detener reconocimiento
                 self.suspend()
 
-    def keyStop():
+    def keyStop(self):
         #uso variable "estática" para nuevos llamados a la función
-        if not hasattr(keyStop,"exit") or not keyStop.exit:
-            keyStop.exit = false
+        if not hasattr(CamServer.keyStop,"exit") or not CamServer.keyStop.exit:
+            CamServer.keyStop.exit = False
             if cv2.waitKey(25) & 0xFF == ord('q'):
-                BD.setReconociendo(false)
-                keyStop.exit = true
-        return keyStop.exit
+                self.processNewState(cn.Status.SUSPENDING)
+                CamServer.keyStop.exit = True
+        return CamServer.keyStop.exit
 
     ''' Proceso background de servidor '''
     def runService(self):
         try:
             i = self.FRAMES_OMITIDOS
             #bucle infinito (funciona en background como servicio)
-            while not keyStop():
+            while not self.keyStop():
                 self.cams.captureFrame()
                 if (i < FRAMES_OMITIDOS):
                     i += 1
@@ -88,8 +89,8 @@ class CamServer():
                     
                     rect = self.rn.detect(self.cams.frames, "person", 
                                           float(self.conf["ppersona"]))
-                    self.bancas.addDetection(rect)
-                    newstate = self.bancas.evaluateOcupy()
+                    self.ubicaciones.addDetection(rect)
+                    newstate = self.ubicaciones.evaluateOcupy()
                     
             
         except IOError as e:
@@ -119,8 +120,8 @@ if __name__ == "__main__":
     NUM_CLASSES = 90
     FRAMES_OMITIDOS = 10 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
 
-  PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
-  TEST_IMAGE_PATHS = [ os.path.join('img_pruebas', 'image{}.jpg'.format(i)) for i in range(1, 3) ]
+    PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
+    TEST_IMAGE_PATHS = [ os.path.join('img_pruebas', 'image{}.jpg'.format(i)) for i in range(1, 3) ]
 
     svr = CamServer(serverName, dbConfig) #(sourceDB|sourceFile)
     svr.runService()
