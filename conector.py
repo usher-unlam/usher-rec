@@ -9,7 +9,7 @@ import socket
 from urllib.parse import urlparse
 from datetime import datetime as time
 from datetime import timedelta as delta
-import cv2
+import cv2.cv2 as cv2
 
 from enum import IntEnum
 class Status(IntEnum):
@@ -38,27 +38,15 @@ class Camaras():
     CONN_CHECK_TIMEOUT = 5 #si en 5 segundos no tuvo conexión, comprueba de nuevo
     
     def __init__(self, c=[]):
-        print("inicia Camaras")
-        if c.count > 0:
+        print("Inicializa Camaras")
+        if len(c) > 0:
             self.cams = c
         else:
             self.cams = []
-        self.camstat = []
-        self.caps = []
-        self.frames = []
-    
-    def getUbicacionesFromCams(self):
-        ubicaciones = []
-        yxyx = []
-        for cam in self.cams:
-            for ban in cam.ubicaciones:
-                ubicaciones[ban["nro"]].append((cam,ban["coord"],ban["yxyx"]))
-                yxyx[cam.nombre].append(ban["yxyx"])
-        return (ubicaciones,yxyx);
-        
-    #    def addCam(self, c={}):
-    #        self.cams.append(c)
-    
+        self.camstat = {}
+        self.caps = {}
+        self.frames = {}
+
     @staticmethod
     def urlTest(host, port):
         out = (CamStatus.OK ,"")
@@ -78,22 +66,36 @@ class Camaras():
             finally:
                 s.close()
         return out
-    
+
+    #    def addCam(self, c={}):
+    #        self.cams.append(c)
+
+    def getUbicacionesFromCams(self):
+        ubicaciones = {}
+        yxyx = {}
+        for cam in self.cams:
+            for ubi in cam["ubicaciones"]:
+                ubicaciones[ubi["nro"]] = (cam, ubi["coord"],ubi["yxyx"])
+                yxyx[cam["nombre"]] = ubi["yxyx"]
+        return (ubicaciones, yxyx)
+
     def checkConn(self):
         #self.camstat = [(tstamp,estado)]
         #time.timedelta(days=0, seconds=0, microseconds=0, milliseconds=0, minutes=0, hours=0, weeks=0)
         tlimit = time.now() - delta(seconds=Camaras.CONN_CHECK_TIMEOUT)
         for cam in self.cams:
-            if (not self.camstat[cam.nombre] 
-                or self.camstat[cam.nombre][0] < tlimit):
+            if (not cam["nombre"] in self.camstat 
+                or self.camstat[cam["nombre"]][0] < tlimit):
     ##TODO: Chequear si no es url (ej: 0 o "file.mp4")
-                url = urlparse(cam.url)
+                url = urlparse(cam["url"])
                 out, msj = Camaras.urlTest(url.hostname,url.port)
-                self.setCamStat(cam.nombre, out, msj)
+                self.setCamStat(cam["nombre"], out, msj)
+    
     
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):
         self.camstat[cam] = (time.now(), estado, msj)
     ##TODO: comprobar si es necesario eliminar caps ante cualquier error/falla
+    ##TODO: guardar estado en base de datos
         if (estado != CamStatus.OK):
             self.caps[cam] = None
     ##TODO: Loguear conexión fallida
@@ -102,30 +104,30 @@ class Camaras():
         #self.caps = []
         self.frames = []
         for cam in self.cams:
-            if self.camstat[cam.nombre][1] == CamStatus.OK:
+            if self.camstat[cam["nombre"]][1] == CamStatus.OK:
                 try:
                     #crea captura si no había sido creado
-                    if not self.caps[cam.nombre]:
-                        self.caps[cam.nombre] = cv2.VideoCapture(cam.url)
-                    if self.caps[cam.nombre].isOpened():
-                        ret, image_np = self.caps[cam.nombre].read()
+                    if  not cam["nombre"] in self.caps:
+                        self.caps[cam["nombre"]] = cv2.VideoCapture(cam["url"])
+                    if self.caps[cam["nombre"]].isOpened():
+                        ret, image_np = self.caps[cam["nombre"]].read()
                         if ret:
-                            self.frames[cam.nombre] = image_np
+                            self.frames[cam["nombre"]] = image_np
                             #renovar estado OK de cámara
-                            self.setCamStat(cam.nombre, CamStatus.OK, "frame")
+                            self.setCamStat(cam["nombre"], CamStatus.OK, "frame")
                         else:
-                            err = "No se recibió frame: " + cam.nombre
-                            self.setCamStat(cam.nombre, CamStatus.ERR_CV2CAP, err)
+                            err = "No se recibió frame: " + cam["nombre"]
+                            self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
                     else:
-                        err = "No se recibe stream de origen: " + cam.nombre
-                        self.setCamStat(cam.nombre, CamStatus.ERR_CV2CAP, err)
+                        err = "No se recibe stream de origen: " + cam["nombre"]
+                        self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
                 except IOError as e:
-                    err = "Error abriendo socket: " + cam.nombre + " (" + e + ")"
-                    self.setCamStat(cam.nombre, CamStatus.ERR_SOCKET, err)
+                    err = "Error abriendo socket: " + cam["nombre"] + " (" + e + ")"
+                    self.setCamStat(cam["nombre"], CamStatus.ERR_SOCKET, err)
                     #print(time.now(), "Error abriendo socket: ", ipcamUrl)
                 except cv2.error as e:
-                    err = "Error CV2: " + cam.nombre + " (" + e + ")"
-                    self.setCamStat(cam.nombre, CamStatus.ERR_CV2CAP, err)
+                    err = "Error CV2: " + cam["nombre"] + " (" + e + ")"
+                    self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
                     #print(time.now(), "Error CV2: ", e)
     
 class DataSource():
@@ -175,10 +177,10 @@ class DBSource(DataSource):
         self.cursor = self.conn.cursor()
         
     def readSvrInfo(self):
-        self.cursor.execute("SELECT status,config FROM camserver "
+        self.cursor.execute("SELECT status+0 as status,config FROM camserver "
                             "WHERE id in (%s, 'BASE') " 
                             "ORDER BY alive DESC LIMIT 1", 
-                            (self.camsvr.nombre))
+                            (self.camsvr.nombre,))
         reg = self.cursor.fetchone()
         status = Status.OFF
         server = {}
@@ -198,7 +200,7 @@ class DBSource(DataSource):
                   "where z.id='BASE' LIMIT 1))" 
                   "ON DUPLICATE KEY UPDATE alive=null, status=VALUES(status)")
         self.cursor.execute(script,
-                            (self.camsvr.nombre,self.camsvr.status))
+                            (self.camsvr.nombre,self.camsvr.status,))
         self.conn.commit()
 
     '''Leer info de cámaras de BD
@@ -223,15 +225,15 @@ class DBSource(DataSource):
             self.cursor.execute("UPDATE camara SET "
                                 "config = %s "
                                 "WHERE nombre = %s and activa = true",
-                                (json.dumps(cam),cam.nombre))
+                                (json.dumps(cam),cam["nombre"],))
         self.conn.commit()
     
     '''Leer info de ocupación de ubicaciones de BBDD
         Output: <class 'list'> ['0', '0', '0'] '''
     def readOcupyState(self):
         self.cursor.execute("SELECT estadoUbicaciones FROM estado "
-                            "WHERE camserver = %s" 
-                            "ORDER BY tstamp DESC LIMIT 1", (self.camsvr))
+                            "WHERE camserver = %s " 
+                            "ORDER BY tstamp DESC LIMIT 1", (self.camsvr.nombre,))
         reg = self.cursor.fetchone()
         estado = list()
         if not reg is None:
@@ -241,7 +243,7 @@ class DBSource(DataSource):
     def writeOcupyState(self, newState=""):
         if newState != "":
             self.cursor.execute("INSERT INTO estado (camserver, estadoUbicaciones) "
-                                "VALUES (%s, %s)", (self.camsvr, newState ))
+                                "VALUES (%s, %s)", (self.camsvr.nombre, newState, ))
             self.conn.commit()
        
     def close(self):

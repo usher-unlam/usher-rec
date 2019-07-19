@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
-import cv2
+import cv2.cv2 as cv2
 
 import ubicacion as ubi
 import conector as cn
@@ -10,11 +10,19 @@ import conector as cn
 from datetime import datetime as time
 
 class CamServer():
-    from datetime import datetime as time
     def __init__(self, nombre="", dbConfig={}):
-        self.FRAMES_OMITIDOS = 10 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
-        self.nom = nombre
+        self.FRECUENCIA_CNN = 20 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
+        
+            #   #Cantidad de ciclos del timer que la CNN no trabaja
+            #   #Esto es para evitar lag
+            #   self.FREC=20
+            #   self.FRECUENCIA_CNN=self.FREC
+            #   #Seteo cada cuanto tiempo se activará el timer
+            #   self.fps=40
+        self.nombre = nombre
+        self.status = cn.Status.OFF
         self.source = cn.DBSource(self,dbConfig)
+    ##TODO: chequear conexion correcta con BBDD
         #Procesa setup y estado suspend    
         self.processNewState(cn.Status.SUSPENDING)
         
@@ -31,15 +39,13 @@ class CamServer():
         self.cams = cn.Camaras(c)
         #comprobar conexión de cámaras
         self.cams.checkConn()
-        self.ubicaciones = ubi.Ubicacion(b,c)
+        self.ubicaciones = ubi.Ubicacion(b,self.cams)
         #iniciar red neuronal
-        PATH_TO_CKPT = 'modelo_congelado/frozen_inference_graph.pb'
+        PATH_TO_CKPT = os.path.join('modelo_congelado','frozen_inference_graph.pb')
         PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
-        PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
-        TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
+        #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
+        #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
         self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
-
-        
         
     def start(self):
         self.status = cn.Status.WORKING
@@ -61,7 +67,7 @@ class CamServer():
                 and newStatus in [cn.Status.STARTING,cn.Status.RESTARTING]):
                 #iniciar servidor / comenzar reconocimiento
                 self.start()
-            if (self.status == cn.Status.WORKING
+            if (self.status in [cn.Status.OFF,cn.Status.WORKING]
                 and newStatus == cn.Status.SUSPENDING):
                 #suspender servidor / detener reconocimiento
                 self.suspend()
@@ -78,23 +84,24 @@ class CamServer():
     ''' Proceso background de servidor '''
     def runService(self):
         try:
-            i = self.FRAMES_OMITIDOS
+            i = 0
             #bucle infinito (funciona en background como servicio)
             while not self.keyStop():
                 self.cams.captureFrame()
-                if (i < FRAMES_OMITIDOS):
+                if (i < self.FRECUENCIA_CNN):
                     i += 1
                 else:
                     i = 0 
-                    
-                    rect = self.rn.detect(self.cams.frames, "person", 
-                                          float(self.conf["ppersona"]))
-                    self.ubicaciones.addDetection(rect)
-                    newstate = self.ubicaciones.evaluateOcupy()
-                    
-            
+                    print(i)
+  ####                  rect = self.rn.detect(self.cams.frames, "personaSentada", 
+  ####                                        float(self.conf["ppersona"]))
+  ####                  self.ubicaciones.addDetection(rect)
+  ####                  # cada N detecciones o X tiempo
+  ####                      newstate = self.ubicaciones.evaluateOcupy()
+  ####                     #Grabar en la base de datos
         except IOError as e:
-            print(time.now(), "Error abriendo socket: ", ipcamUrl)
+            print("Error IOError que no capturado correctamente.")
+            #print(time.now(), "Error abriendo socket: ", ipcamUrl)
         except cv2.error as e:
             print(time.now(), "Error CV2: ", e)
         #    if e.number == -138:
@@ -110,15 +117,16 @@ class CamServer():
 if __name__ == "__main__":
     serverName = "SVR1"
     dbConfig = {'user':"usher",
-                'passwd':"usher",
-                'svr':"localhost",
+                'passwd':"usher101",
+                'svr':"usher.sytes.net",
                 'db':"usher_rec"}
     sys.path.append("..")
-    rnConfig = ['modelo_congelado/frozen_inference_graph.pb',
+    rnConfig = [
+                os.path.join('modelo_congelado', 'frozen_inference_graph.pb'),
                 os.path.join('configuracion', 'label_map.pbtxt'),
                 ]
     NUM_CLASSES = 90
-    FRAMES_OMITIDOS = 10 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
+    FRECUENCIA_CNN = 10 #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
 
     PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
     TEST_IMAGE_PATHS = [ os.path.join('img_pruebas', 'image{}.jpg'.format(i)) for i in range(1, 3) ]
