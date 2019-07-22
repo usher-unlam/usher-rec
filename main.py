@@ -11,7 +11,10 @@ from datetime import datetime as time
 
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
-        self.conf = {"frecCNN": 20} #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
+        self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCNN": 40, 
+                    "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
+                    "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5} 
+                    #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
         
             #   #Cantidad de ciclos del timer que la CNN no trabaja
             #   #Esto es para evitar lag
@@ -94,7 +97,8 @@ class CamServer():
                     i = 0 
                     print(i)
                     if(len(self.cams.frames)):
-                        frame = self.cams.frames[0]
+                        frame = list(self.cams.frames.values())[0]
+                        print(list(self.cams.frames)[0])
   ####                  rect = self.rn.detect(self.cams.frames, "personaSentada", 
   ####                                        float(self.conf["ppersona"]))
   ####                  self.ubicaciones.addDetection(rect)

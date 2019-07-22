@@ -18,6 +18,7 @@ class RN():
         #variables detección por cámara
         self.boxes = []; self.scores = []; self.classes = []; self.num = []
         
+        print('RN init-start ')
         self.detection_graph = tf.Graph()
         with self.detection_graph.as_default():
             od_graph_def = tf.GraphDef()
@@ -42,6 +43,7 @@ class RN():
                 self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
                 print("Detection Classes:",self.detection_classes)
                 self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+        print('RN init-end ')
 
     ##TODO: comprobar errores en carga de RN
     

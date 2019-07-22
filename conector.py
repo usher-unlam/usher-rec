@@ -96,15 +96,16 @@ class Camaras():
     
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):
         self.camstat[cam] = (time.now(), estado, msj)
-    ##TODO: comprobar si es necesario eliminar caps ante cualquier error/falla
+        #self.caps[cam] = None
     ##TODO: guardar estado en base de datos
+        # es necesario eliminar caps ante cualquier error/falla
         if (estado != CamStatus.OK):
             self.caps[cam] = None
     ##TODO: Loguear conexión fallida
     
     def captureFrame(self):
         #self.caps = []
-        self.frames = []
+        self.frames = {}
         #comprobar cada cierto TIMEOUT la conexión de cámaras 
         self.checkConn()
         if len(self.cams) == 0:
@@ -113,9 +114,12 @@ class Camaras():
             if self.camstat[cam["nombre"]][1] == CamStatus.OK:
                 try:
                     #crea captura si no había sido creado
-                    if  not cam["nombre"] in self.caps:
+                    if (not cam["nombre"] in self.caps 
+                        or self.caps[cam["nombre"]] is None):
                         self.caps[cam["nombre"]] = cv2.VideoCapture(cam["url"])
-                    if self.caps[cam["nombre"]].isOpened():
+
+                    if (self.caps[cam["nombre"]] 
+                        and self.caps[cam["nombre"]].isOpened()):
                         ret, image_np = self.caps[cam["nombre"]].read()
                         if ret:
                             self.frames[cam["nombre"]] = image_np
@@ -136,7 +140,9 @@ class Camaras():
                     self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
                     #print(time.now(), "Error CV2: ", e)
             else:
-                print(cam["nombre"], " con error: ",self.camstat[cam["nombre"]])
+                # Tambien ocurre ante error de usuario / contraseña
+                print(cam["nombre"], " con error: ",self.camstat[cam["nombre"]], " (compruebe usuario/contraseña)")
+                #No setear nuevo estado: self.setCamStat(cam["nombre"], CamStatus.ERR_, err)
         return self.frames
     
 class DataSource():
