@@ -25,6 +25,8 @@ class CamServer():
             #   self.fps=40
         self.nombre = nombre
         self.status = cn.Status.OFF
+        print("Iniciando servidor",self.nombre)
+        # Establecer conexion con BBDD
         self.source = cn.DBSource(dbConfig,self.conf["DB_TIMEOUT"],self)
     ##TODO: chequear conexion correcta con BBDD
         # Procesa setup obteniendo ultimo estado (recuperación post falla)
@@ -36,8 +38,12 @@ class CamServer():
         self.processNewState(newStatus)
         
     def setup(self):
-        #obtiene configuración de servidor, salvo que no exista y toma la BASE
+        print("Configurando servidor",self.nombre)
+        # Obtiene configuración de servidor, salvo que no exista y toma la BASE
         newStatus, self.conf = self.source.readSvrInfo()
+        # Actualiza configuracion BBDD
+        self.source.setup(self.conf["DB_TIMEOUT"])
+
     ##TODO: chequear newStatus no es asignado
     ##TODO: chequear configuración cargada correctamente
         #obtiene configuración de cámaras (ip/url,ubicaciones)
@@ -72,6 +78,7 @@ class CamServer():
     def processNewState(self, newStatus=cn.Status.OFF):
         forceWrite = False
         if (self.status != newStatus):
+            forceWrite = True
             print("Nuevo Estado: actual (",int(self.status),",",str(self.status),") >> nuevo (",int(newStatus),",",str(newStatus),")")
             if (self.status != cn.Status.OFF 
                 and newStatus == cn.Status.RESTARTING):
@@ -85,13 +92,13 @@ class CamServer():
                 and newStatus == cn.Status.SUSPENDING):
                 #suspender servidor / detener reconocimiento
                 self.suspend()
-            forceWrite = True
-        self.source.writeSvrStatus(self.nombre, self.status, forceWrite)
+        self.source.writeSvrStatus(self.nombre, self.status, self.conf, forceWrite)
 
     def keyStop(self):
         #uso variable "estática" para nuevos llamados a la función
-        if not hasattr(CamServer.keyStop,"exit") or not getattr(CamServer.keyStop,'exit'):
+        if not hasattr(CamServer.keyStop,"exit"):
             setattr(CamServer.keyStop,'exit', False)
+        if not getattr(CamServer.keyStop,'exit'):
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 self.processNewState(cn.Status.SUSPENDING)
                 setattr(CamServer.keyStop,'exit', True)
@@ -109,10 +116,10 @@ class CamServer():
                         i += 1
                     else:
                         i = 0 
-                        print(i)
+                        print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " (",self.conf["frecCNN"],"descartados)")
                         if(len(self.cams.frames)):
                             frame = list(self.cams.frames.values())[0]
-                            print(list(self.cams.frames)[0])
+                            print("-> Procesando frame >",list(self.cams.frames)[0])
   ####                  rect = self.rn.detect(self.cams.frames, "personaSentada", 
   ####                                        float(self.conf["ppersona"]))
   ####                  self.ubicaciones.addDetection(rect)

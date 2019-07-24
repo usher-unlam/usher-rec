@@ -185,12 +185,30 @@ class DBSource(DataSource):
         DataSource.__init__(self, camServer)
         #print("inicia DBSource")
         self.tout = timeouts
-        self.conn = mysql.connector.connect(user=connData['user'], 
-                                           password=connData['passwd'],
-                                           host=connData['svr'],
-                                           database=connData['db'])
-    ##TODO: chequear conexión BBDD
-        self.cursor = self.conn.cursor()
+        self.connData = connData
+        self.conn = None
+        self.cursor = None
+        # Realizar primer conexion a BBDD
+        self.connect()
+
+    def connect(self):
+        if self.conn is None or not self.conn.is_connected():
+            self.cursor = None
+            self.conn = mysql.connector.connect(user=self.connData['user'], 
+                                                password=self.connData['passwd'],
+                                                host=self.connData['svr'],
+                                                database=self.connData['db'])
+    ##TODO: capturar errores SQL
+            if self.conn and self.conn.is_connected():
+                self.cursor = self.conn.cursor()
+                if self.cursor:
+                    return True
+            return False
+        else:
+            return True
+    
+    def setup(self, timeouts):
+        self.tout = timeouts
 
     def readSvrStatus(self, defStat=Status.OFF, forced=False):
         status = defStat
@@ -199,32 +217,41 @@ class DBSource(DataSource):
             setattr(DBSource.readSvrStatus, 'update', tlimit)
         if (forced 
             or getattr(DBSource.readSvrStatus, 'update') < tlimit):
-            self.cursor.execute("""SELECT status+0 FROM camserver 
-                                WHERE id = %s""", 
-                                (self.camsvr.nombre,))
-            reg = self.cursor.fetchone()
-            if not reg is None and reg[0] > 0:
-                status = Status(reg[0])
-            setattr(DBSource.readSvrStatus, 'update', time.now())
-            print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
+            if self.connect():
+                self.cursor.execute("""SELECT status+0 FROM camserver 
+                                    WHERE id = %s""", 
+                                    (self.camsvr.nombre,))
+                reg = self.cursor.fetchone()
+                if not reg is None and reg[0] > 0:
+                    status = Status(reg[0])
+                setattr(DBSource.readSvrStatus, 'update', time.now())
+                print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
+            else:
+                print("Lee BBDD status","ERROR CONEXION A BBDD")
+    ##TODO: capturar errores SQL
         return status
         
     # Actualizar estado y fecha de vivo (keep alive) del servidor
-    def writeSvrStatus(self, svrNombre, svrStatus, forced=False):
-        out = True
+    def writeSvrStatus(self, svrNombre, svrStatus, svrConf, forced=False):
+        out = False
         tlimit = time.now() - delta(milliseconds=self.tout['STATUS_WRITE'])
         if not hasattr(DBSource.writeSvrStatus, 'update'):
             setattr(DBSource.writeSvrStatus, 'update', tlimit)
         if (forced 
             or getattr(DBSource.writeSvrStatus, 'update') < tlimit):
-            self.cursor.execute("""INSERT INTO camserver (id,alive,status,config) 
-                                VALUES (%s,NULL,%s, (select z.config from camserver as z 
-                                where z.id='BASE' LIMIT 1)) 
-                                ON DUPLICATE KEY UPDATE alive=null, status=if(%s,VALUES(status),status)""",
-                                (svrNombre, int(svrStatus),forced))
-            out = self.conn.commit()
-            setattr(DBSource.writeSvrStatus, 'update', time.now())
-            print("Graba BBDD status",getattr(DBSource.writeSvrStatus, 'update'),svrStatus)
+            if self.connect():
+                #(select z.config from camserver as z where z.id='BASE' LIMIT 1)
+                self.cursor.execute("""INSERT INTO camserver (id,alive,status,config) 
+                                    VALUES (%s,NULL,%s,%s) 
+                                    ON DUPLICATE KEY UPDATE alive=null, status=if(%s,VALUES(status),status)""",
+                                    (svrNombre, int(svrStatus), json.dumps(svrConf),forced))
+                out = self.conn.commit()
+                setattr(DBSource.writeSvrStatus, 'update', time.now())
+                print("Graba BBDD status",getattr(DBSource.writeSvrStatus, 'update'),svrStatus)
+                out = True
+            else:
+                print("Graba BBDD status","ERROR CONEXION A BBDD")
+    ##TODO: capturar errores SQL
         return out
 
     def readSvrInfo(self):
@@ -239,6 +266,7 @@ class DBSource(DataSource):
             if reg[0] > 0:
                 status = Status(reg[0])
             server = json.loads(reg[1])
+    ##TODO: capturar errores SQL
         return (status,server)
 
     '''Leer info de cámaras de BD
@@ -256,6 +284,7 @@ class DBSource(DataSource):
         if not reg is None:
             for r in reg:
                 cams.append(json.loads(r[0]))
+    ##TODO: capturar errores SQL
         return cams
 
     def writeCamInfo(self,cams=[]):
@@ -264,6 +293,7 @@ class DBSource(DataSource):
                                 config = %s 
                                 WHERE nombre = %s and activa = true""",
                                 (json.dumps(cam),cam["nombre"],))
+    ##TODO: capturar errores SQL
         self.conn.commit()
     
     '''Leer info de ocupación de ubicaciones de BBDD
@@ -277,6 +307,7 @@ class DBSource(DataSource):
         estado = list()
         if not reg is None:
             estado = wrap(reg[0],1)
+    ##TODO: capturar errores SQL
         return estado
         
     def writeOcupyState(self, newState=""):
@@ -284,13 +315,15 @@ class DBSource(DataSource):
             self.cursor.execute("""INSERT INTO estado (camserver, estadoUbicaciones) 
                                 VALUES (%s, %s)""", 
                                 (self.camsvr.nombre, int(newState), ))
+    ##TODO: capturar errores SQL
             self.conn.commit()
        
     def close(self):
-        if self.conn.is_connected():
+        if self.conn and self.conn.is_connected():
             self.cursor.close()
-            self.conn.close()       
-            
+            self.conn.close()
+    ##TODO: capturar errores SQL
+    
 #import datetime
 #query = ("SELECT first_name, last_name, hire_date FROM employees "
 #         "WHERE hire_date BETWEEN %s AND %s")
