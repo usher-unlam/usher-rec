@@ -139,16 +139,16 @@ class Camaras():
                     err = "Error CV2: " + cam["nombre"] + " (" + e + ")"
                     self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
                     #print(time.now(), "Error CV2: ", e)
-            else:
+            #else:
                 # Tambien ocurre ante error de usuario / contraseña
-                print(cam["nombre"], " con error: ",self.camstat[cam["nombre"]], " (compruebe usuario/contraseña)")
+            #    print(cam["nombre"], " con error: ",self.camstat[cam["nombre"]], " (compruebe usuario/contraseña)")
                 #No setear nuevo estado: self.setCamStat(cam["nombre"], CamStatus.ERR_, err)
         return self.frames
     
 class DataSource():
     __metaclass__ = ABCMeta
     def __init__(self, camServer):
-        print("inicia DataSource-",type(self).__name__)
+        print("Inicia DataSource -",type(self).__name__)
         self.camsvr = camServer
         
     @abc.abstractmethod
@@ -176,47 +176,70 @@ class DataSource():
 class FileSource(DataSource):
     def __init__(self, camServer):
         DataSource.__init__(self, camServer)
-        print("inicia FileSource")
+        #print("inicia FileSource")
         pass
 
 class DBSource(DataSource):
     #{user="root",passwd="12345678",svr="localhost",db="usher_rec"}
-    def __init__(self, camServer, connData):
+    def __init__(self, connData, timeouts, camServer):
         DataSource.__init__(self, camServer)
-        print("inicia DBSource")
+        #print("inicia DBSource")
+        self.tout = timeouts
         self.conn = mysql.connector.connect(user=connData['user'], 
                                            password=connData['passwd'],
                                            host=connData['svr'],
                                            database=connData['db'])
     ##TODO: chequear conexión BBDD
         self.cursor = self.conn.cursor()
+
+    def readSvrStatus(self, defStat=Status.OFF, forced=False):
+        status = defStat
+        tlimit = time.now() - delta(milliseconds=self.tout['STATUS_READ'])
+        if not hasattr(DBSource.readSvrStatus, 'update'):
+            setattr(DBSource.readSvrStatus, 'update', tlimit)
+        if (forced 
+            or getattr(DBSource.readSvrStatus, 'update') < tlimit):
+            self.cursor.execute("""SELECT status+0 FROM camserver 
+                                WHERE id = %s""", 
+                                (self.camsvr.nombre,))
+            reg = self.cursor.fetchone()
+            if not reg is None and reg[0] > 0:
+                status = Status(reg[0])
+            setattr(DBSource.readSvrStatus, 'update', time.now())
+            print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
+        return status
         
+    # Actualizar estado y fecha de vivo (keep alive) del servidor
+    def writeSvrStatus(self, svrNombre, svrStatus, forced=False):
+        out = True
+        tlimit = time.now() - delta(milliseconds=self.tout['STATUS_WRITE'])
+        if not hasattr(DBSource.writeSvrStatus, 'update'):
+            setattr(DBSource.writeSvrStatus, 'update', tlimit)
+        if (forced 
+            or getattr(DBSource.writeSvrStatus, 'update') < tlimit):
+            self.cursor.execute("""INSERT INTO camserver (id,alive,status,config) 
+                                VALUES (%s,NULL,%s, (select z.config from camserver as z 
+                                where z.id='BASE' LIMIT 1)) 
+                                ON DUPLICATE KEY UPDATE alive=null, status=if(%s,VALUES(status),status)""",
+                                (svrNombre, int(svrStatus),forced))
+            out = self.conn.commit()
+            setattr(DBSource.writeSvrStatus, 'update', time.now())
+            print("Graba BBDD status",getattr(DBSource.writeSvrStatus, 'update'),svrStatus)
+        return out
+
     def readSvrInfo(self):
-        self.cursor.execute("SELECT status+0 as status,config FROM camserver "
-                            "WHERE id in (%s, 'BASE') " 
-                            "ORDER BY alive DESC LIMIT 1", 
+        self.cursor.execute("""SELECT status+0 as status, config FROM camserver 
+                            WHERE id in (%s, 'BASE') 
+                            ORDER BY alive DESC LIMIT 1""", 
                             (self.camsvr.nombre,))
         reg = self.cursor.fetchone()
         status = Status.OFF
         server = {}
         if not reg is None:
-            status = Status(reg[0])
+            if reg[0] > 0:
+                status = Status(reg[0])
             server = json.loads(reg[1])
         return (status,server)
-        
-    def keepAlive(self):
-    #        script = "INSERT INTO camserver (id,status,config)"
-    #                            "VALUES (%s,%s, (select z.config from camserver as z "
-    #                            "where z.id='BASE' LIMIT 1))"
-    #                            "ON DUPLICATE KEY UPDATE alive = null, "
-    #                            "status = VALUES(status)"
-        script = ("INSERT INTO camserver (id,status,config) " 
-                  "VALUES (%s,%s, (select z.config from camserver as z " 
-                  "where z.id='BASE' LIMIT 1))" 
-                  "ON DUPLICATE KEY UPDATE alive=null, status=VALUES(status)")
-        self.cursor.execute(script,
-                            (self.camsvr.nombre,self.camsvr.status,))
-        self.conn.commit()
 
     '''Leer info de cámaras de BD
         Output: <class 'list'> [{
@@ -237,18 +260,19 @@ class DBSource(DataSource):
 
     def writeCamInfo(self,cams=[]):
         for cam in cams:
-            self.cursor.execute("UPDATE camara SET "
-                                "config = %s "
-                                "WHERE nombre = %s and activa = true",
+            self.cursor.execute("""UPDATE camara SET 
+                                config = %s 
+                                WHERE nombre = %s and activa = true""",
                                 (json.dumps(cam),cam["nombre"],))
         self.conn.commit()
     
     '''Leer info de ocupación de ubicaciones de BBDD
         Output: <class 'list'> ['0', '0', '0'] '''
     def readOcupyState(self):
-        self.cursor.execute("SELECT estadoUbicaciones FROM estado "
-                            "WHERE camserver = %s " 
-                            "ORDER BY tstamp DESC LIMIT 1", (self.camsvr.nombre,))
+        self.cursor.execute("""SELECT estadoUbicaciones FROM estado 
+                            WHERE camserver = %s 
+                            ORDER BY tstamp DESC LIMIT 1""", 
+                            (self.camsvr.nombre,))
         reg = self.cursor.fetchone()
         estado = list()
         if not reg is None:
@@ -257,8 +281,9 @@ class DBSource(DataSource):
         
     def writeOcupyState(self, newState=""):
         if newState != "":
-            self.cursor.execute("INSERT INTO estado (camserver, estadoUbicaciones) "
-                                "VALUES (%s, %s)", (self.camsvr.nombre, newState, ))
+            self.cursor.execute("""INSERT INTO estado (camserver, estadoUbicaciones) 
+                                VALUES (%s, %s)""", 
+                                (self.camsvr.nombre, int(newState), ))
             self.conn.commit()
        
     def close(self):

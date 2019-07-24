@@ -13,7 +13,8 @@ class CamServer():
     def __init__(self, nombre="", dbConfig={}):
         self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCNN": 40, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
-                    "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5} 
+                    "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
+                    "DB_TIMEOUT" : { "STATUS_READ": 4000, "STATUS_WRITE": 1000 }} 
                     #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
         
             #   #Cantidad de ciclos del timer que la CNN no trabaja
@@ -24,10 +25,15 @@ class CamServer():
             #   self.fps=40
         self.nombre = nombre
         self.status = cn.Status.OFF
-        self.source = cn.DBSource(self,dbConfig)
+        self.source = cn.DBSource(dbConfig,self.conf["DB_TIMEOUT"],self)
     ##TODO: chequear conexion correcta con BBDD
-        #Procesa setup y estado suspend    
-        self.processNewState(cn.Status.SUSPENDING)
+        # Procesa setup obteniendo ultimo estado (recuperación post falla)
+        currStatus = self.setup()
+        # Define estado a procesar segun estado previo (Status.SUSPENDING por defecto) 
+        newStatus = cn.Status.SUSPENDING if currStatus in [cn.Status.OFF,cn.Status.RESTARTING] else cn.Status(2 * (int(currStatus) // 2))
+        print("BD", currStatus, "=> procesar", newStatus)
+        # Definir nuevo estado y guardar en BBDD
+        self.processNewState(newStatus)
         
     def setup(self):
         #obtiene configuración de servidor, salvo que no exista y toma la BASE
@@ -49,6 +55,8 @@ class CamServer():
         #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
         self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
+
+        return newStatus
         
     def start(self):
         self.status = cn.Status.WORKING
@@ -58,53 +66,61 @@ class CamServer():
     
     ''' Procesar nuevo estado de servidor (control externo)
     - Se recibe status=[STARTING,RESTARTING,SUSPENDING]
-    - Se procesan funciones: setup, start, suspend
-    - Solo procesa cuando el newStatus difiere del actual '''
+    - Se procesan funciones: setup, start, suspend, ...
+    - Solo procesa cuando el newStatus difiere del actual
+    - Actualiza estado en BBDD '''
     def processNewState(self, newStatus=cn.Status.OFF):
+        forceWrite = False
         if (self.status != newStatus):
-            if (self.status == cn.Status.OFF 
-                or newStatus == cn.Status.RESTARTING):
-                #Recargar configuracion servidor
+            print("Nuevo Estado: actual (",int(self.status),",",str(self.status),") >> nuevo (",int(newStatus),",",str(newStatus),")")
+            if (self.status != cn.Status.OFF 
+                and newStatus == cn.Status.RESTARTING):
+                #Recargar configuracion servidor (si es OFF, setup se omite)
                 self.setup() 
             if (self.status in [cn.Status.OFF,cn.Status.SUSPENDED]
-                and newStatus in [cn.Status.STARTING,cn.Status.RESTARTING]):
+                and newStatus in [cn.Status.STARTING]): #,cn.Status.RESTARTING
                 #iniciar servidor / comenzar reconocimiento
                 self.start()
             if (self.status in [cn.Status.OFF,cn.Status.WORKING]
                 and newStatus == cn.Status.SUSPENDING):
                 #suspender servidor / detener reconocimiento
                 self.suspend()
+            forceWrite = True
+        self.source.writeSvrStatus(self.nombre, self.status, forceWrite)
 
     def keyStop(self):
         #uso variable "estática" para nuevos llamados a la función
-        if not hasattr(CamServer.keyStop,"exit") or not CamServer.keyStop.exit:
-            CamServer.keyStop.exit = False
+        if not hasattr(CamServer.keyStop,"exit") or not getattr(CamServer.keyStop,'exit'):
+            setattr(CamServer.keyStop,'exit', False)
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 self.processNewState(cn.Status.SUSPENDING)
-                CamServer.keyStop.exit = True
-        return CamServer.keyStop.exit
+                setattr(CamServer.keyStop,'exit', True)
+        return getattr(CamServer.keyStop,'exit')
 
     ''' Proceso background de servidor '''
     def runService(self):
         try:
             i = self.conf["frecCNN"]
-            #bucle infinito (funciona en background como servicio)
+            # Bucle infinito (funciona en background como servicio)
             while not self.keyStop():
-                self.cams.captureFrame()
-                if (i < self.conf["frecCNN"]):
-                    i += 1
-                else:
-                    i = 0 
-                    print(i)
-                    if(len(self.cams.frames)):
-                        frame = list(self.cams.frames.values())[0]
-                        print(list(self.cams.frames)[0])
+                if self.status is cn.Status.WORKING:
+                    self.cams.captureFrame()
+                    if (i < self.conf["frecCNN"]):
+                        i += 1
+                    else:
+                        i = 0 
+                        print(i)
+                        if(len(self.cams.frames)):
+                            frame = list(self.cams.frames.values())[0]
+                            print(list(self.cams.frames)[0])
   ####                  rect = self.rn.detect(self.cams.frames, "personaSentada", 
   ####                                        float(self.conf["ppersona"]))
   ####                  self.ubicaciones.addDetection(rect)
   ####                  # cada N detecciones o X tiempo
   ####                      newstate = self.ubicaciones.evaluateOcupy()
-  ####                     #Grabar en la base de datos
+                # Obtener, procesar y actualizar estado en BBDD
+                newStatus = self.source.readSvrStatus(self.status)
+                self.processNewState(newStatus)
         except IOError as e:
             print("Error IOError que no capturado correctamente.")
             #print(time.now(), "Error abriendo socket: ", ipcamUrl)
