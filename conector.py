@@ -48,6 +48,14 @@ class Camaras():
         self.frames = {}
         self.CONN_TIMEOUT = CONN_TIMEOUT
         self.CONN_CHECK_TIMEOUT = CONN_CHECK_TIMEOUT
+        self.tlastTime = time.now() - delta(seconds=3) #inicializo en tiempo pasado (captura o escape)
+        self.tlastCapt = time.now() - delta(seconds=3) #inicializo en tiempo pasado (solo captura)
+    
+    def getLastTime(self):
+        return self.tlastTime
+
+    def getLastCapture(self):
+        return self.tlastCapt
 
     @staticmethod
     def urlTest(host, port):
@@ -93,7 +101,6 @@ class Camaras():
                 out, msj = Camaras.urlTest(url.hostname,url.port)
                 self.setCamStat(cam["nombre"], out, msj)
     
-    
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):
         self.camstat[cam] = (time.now(), estado, msj)
         #self.caps[cam] = None
@@ -103,9 +110,15 @@ class Camaras():
             self.caps[cam] = None
     ##TODO: Loguear conexión fallida
     
-    def captureFrame(self):
+    def escapeFrame(self):
+        return self.captureFrame(False)
+
+    def captureFrame(self, saveTime=True):
         #self.caps = []
         self.frames = {}
+        self.tlastTime = time.now()
+        if saveTime:
+            self.tlastCapt = self.tlastTime
         #comprobar cada cierto TIMEOUT la conexión de cámaras 
         self.checkConn()
         if len(self.cams) == 0:
@@ -264,6 +277,8 @@ class DBSource(DataSource):
                     print("Graba BBDD status",getattr(DBSource.writeSvrStatus, 'update'),svrStatus)
                     out = True
                 except mysql.connector.Error as error:
+                    print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+                except mysql.connector.InterfaceError as error:
                     print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
                 finally:
                     pass

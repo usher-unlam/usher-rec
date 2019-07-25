@@ -8,13 +8,14 @@ import ubicacion as ubi
 import conector as cn
 
 from datetime import datetime as time
+from datetime import timedelta as delta
 
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
-        self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCNN": 40, 
+        self.conf = {"ubicaciones": 92, "frecCNN": 120, "fpsCam": 40, "fpsCNN": 4, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
-                    "DB_TIMEOUT" : { "CONNECT": 2, "STATUS_READ": 4000, "STATUS_WRITE": 1000 }} 
+                    "DB_TIMEOUT" : { "CONNECT": 3, "STATUS_READ": 4000, "STATUS_WRITE": 1000 }} 
                     #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
         
             #   #Cantidad de ciclos del timer que la CNN no trabaja
@@ -26,6 +27,12 @@ class CamServer():
         self.nombre = nombre
         self.status = cn.Status.OFF
         print("Iniciando servidor",self.nombre)
+        # Iniciar red neuronal
+        PATH_TO_CKPT = os.path.join('modelo_congelado','frozen_inference_graph.pb')
+        PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
+        #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
+        #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
+        self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
         # Establecer conexion con BBDD
         self.source = cn.DBSource(dbConfig,self.conf["DB_TIMEOUT"],self)
         # Se pudo conectar con base de datos?
@@ -33,14 +40,14 @@ class CamServer():
             print("Error de conexion a BBDD. Compruebe los datos de conexion.")
             exit(1)
         else:
-    ##TODO: chequear conexion correcta con BBDD
+        ##TODO: chequear conexion correcta con BBDD
             # Procesa setup obteniendo ultimo estado (recuperación post falla)
             currStatus = self.setup()
             # Define estado a procesar segun estado previo (Status.SUSPENDING por defecto) 
             newStatus = cn.Status.SUSPENDING if currStatus in [cn.Status.OFF,cn.Status.RESTARTING] else cn.Status(2 * (int(currStatus) // 2))
             print("BD", currStatus, "=> procesar", newStatus)
             # Definir nuevo estado y guardar en BBDD
-            self.processNewState(newStatus)
+            self.processNewState(newStatus) 
         
     def setup(self):
         print("Configurando servidor",self.nombre)
@@ -67,12 +74,6 @@ class CamServer():
         #comprobar conexión de cámaras por primera vez
         self.cams.checkConn()
         self.ubicaciones = ubi.Ubicacion(b,self.cams)
-        #iniciar red neuronal
-        PATH_TO_CKPT = os.path.join('modelo_congelado','frozen_inference_graph.pb')
-        PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
-        #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
-        #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
-        self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
 
         return newStatus
         
@@ -120,15 +121,22 @@ class CamServer():
     def runService(self):
         try:
             i = self.conf["frecCNN"]
+
             # Bucle infinito (funciona en background como servicio)
             while not self.keyStop():
                 if self.status is cn.Status.WORKING:
-                    self.cams.captureFrame()
-                    if (i < self.conf["frecCNN"]):
+                    # Garantizar FPS de captura y FREC frames sin procesar
+                    tout1 = time.now() - delta(milliseconds=1000/self.conf["fpsCam"])
+                    tout2 = time.now() - delta(milliseconds=1000/self.conf["fpsCNN"])
+                    if ((tout1 > self.cams.getLastTime()
+                        and i < self.conf["frecCNN"])
+                        or tout2 < self.cams.getLastCapture()):
                         i += 1
+                        self.cams.escapeFrame()
                     else:
+                        self.cams.captureFrame()
+                        print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " (",i,"descartados)")
                         i = 0 
-                        print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " (",self.conf["frecCNN"],"descartados)")
                         if(len(self.cams.frames)):
                             frame = list(self.cams.frames.values())[0]
                             print("-> Procesando frame >",list(self.cams.frames)[0])
@@ -137,9 +145,12 @@ class CamServer():
   ####                  self.ubicaciones.addDetection(rect)
   ####                  # cada N detecciones o X tiempo
   ####                      newstate = self.ubicaciones.evaluateOcupy()
-                # Obtener, procesar y actualizar estado en BBDD
-                newStatus = self.source.readSvrStatus(self.status)
-                self.processNewState(newStatus)
+                # Si WORKING, solo comprueba estado al capturar (evita cuando escapa frame)
+                if (self.status is not cn.Status.WORKING
+                    or i == 0):
+                    # Obtener, procesar y actualizar estado en BBDD
+                    newStatus = self.source.readSvrStatus(self.status)
+                    self.processNewState(newStatus)
         except IOError as e:
             print("Error IOError que no capturado correctamente.")
             #print(time.now(), "Error abriendo socket: ", ipcamUrl)
