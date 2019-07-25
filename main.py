@@ -14,7 +14,7 @@ class CamServer():
         self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCNN": 40, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
-                    "DB_TIMEOUT" : { "STATUS_READ": 4000, "STATUS_WRITE": 1000 }} 
+                    "DB_TIMEOUT" : { "CONNECT": 2, "STATUS_READ": 4000, "STATUS_WRITE": 1000 }} 
                     #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
         
             #   #Cantidad de ciclos del timer que la CNN no trabaja
@@ -28,19 +28,31 @@ class CamServer():
         print("Iniciando servidor",self.nombre)
         # Establecer conexion con BBDD
         self.source = cn.DBSource(dbConfig,self.conf["DB_TIMEOUT"],self)
+        # Se pudo conectar con base de datos?
+        if not self.source.connect():
+            print("Error de conexion a BBDD. Compruebe los datos de conexion.")
+            exit(1)
+        else:
     ##TODO: chequear conexion correcta con BBDD
-        # Procesa setup obteniendo ultimo estado (recuperación post falla)
-        currStatus = self.setup()
-        # Define estado a procesar segun estado previo (Status.SUSPENDING por defecto) 
-        newStatus = cn.Status.SUSPENDING if currStatus in [cn.Status.OFF,cn.Status.RESTARTING] else cn.Status(2 * (int(currStatus) // 2))
-        print("BD", currStatus, "=> procesar", newStatus)
-        # Definir nuevo estado y guardar en BBDD
-        self.processNewState(newStatus)
+            # Procesa setup obteniendo ultimo estado (recuperación post falla)
+            currStatus = self.setup()
+            # Define estado a procesar segun estado previo (Status.SUSPENDING por defecto) 
+            newStatus = cn.Status.SUSPENDING if currStatus in [cn.Status.OFF,cn.Status.RESTARTING] else cn.Status(2 * (int(currStatus) // 2))
+            print("BD", currStatus, "=> procesar", newStatus)
+            # Definir nuevo estado y guardar en BBDD
+            self.processNewState(newStatus)
         
     def setup(self):
         print("Configurando servidor",self.nombre)
         # Obtiene configuración de servidor, salvo que no exista y toma la BASE
-        newStatus, self.conf = self.source.readSvrInfo()
+        newStatus, newConf = self.source.readSvrInfo()
+        if newConf == {}:
+            # Falló recuperando información de servidor
+            print("> se mantiene misma configuracion")
+            newStatus = self.status
+            newConf = self.conf
+        
+        self.conf = newConf
         # Actualiza configuracion BBDD
         self.source.setup(self.conf["DB_TIMEOUT"])
 

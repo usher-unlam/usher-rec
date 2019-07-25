@@ -188,21 +188,28 @@ class DBSource(DataSource):
         self.connData = connData
         self.conn = None
         self.cursor = None
-        # Realizar primer conexion a BBDD
-        self.connect()
+        ## Realizar primer conexion a BBDD
+        #self.connect()
 
     def connect(self):
         if self.conn is None or not self.conn.is_connected():
             self.cursor = None
-            self.conn = mysql.connector.connect(user=self.connData['user'], 
-                                                password=self.connData['passwd'],
-                                                host=self.connData['svr'],
-                                                database=self.connData['db'])
-    ##TODO: capturar errores SQL
-            if self.conn and self.conn.is_connected():
-                self.cursor = self.conn.cursor()
-                if self.cursor:
-                    return True
+            try:
+                self.conn = mysql.connector.connect(user=self.connData['user'], 
+                                                    password=self.connData['passwd'],
+                                                    host=self.connData['svr'],
+                                                    database=self.connData['db'], 
+                                                    connection_timeout= self.tout['CONNECT'])
+        ##TODO: capturar errores SQL
+                if self.conn and self.conn.is_connected():
+                    self.conn.config(connection_timeout=30)
+                    self.cursor = self.conn.cursor()
+                    if self.cursor:
+                        return True
+            except mysql.connector.Error as error:
+                print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+            finally:
+                pass
             return False
         else:
             return True
@@ -218,14 +225,20 @@ class DBSource(DataSource):
         if (forced 
             or getattr(DBSource.readSvrStatus, 'update') < tlimit):
             if self.connect():
-                self.cursor.execute("""SELECT status+0 FROM camserver 
-                                    WHERE id = %s""", 
-                                    (self.camsvr.nombre,))
-                reg = self.cursor.fetchone()
-                if not reg is None and reg[0] > 0:
-                    status = Status(reg[0])
-                setattr(DBSource.readSvrStatus, 'update', time.now())
-                print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
+                try:
+                    self.cursor.execute("""SELECT status+0 FROM camserver 
+                                        WHERE id = %s""", 
+                                        (self.camsvr.nombre,))
+                    reg = self.cursor.fetchone()
+                    if not reg is None and reg[0] > 0:
+                        status = Status(reg[0])
+                    setattr(DBSource.readSvrStatus, 'update', time.now())
+                    print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
+                except mysql.connector.Error as error:
+                    print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+                finally:
+                    pass
+                #self.close()
             else:
                 print("Lee BBDD status","ERROR CONEXION A BBDD")
     ##TODO: capturar errores SQL
@@ -240,32 +253,45 @@ class DBSource(DataSource):
         if (forced 
             or getattr(DBSource.writeSvrStatus, 'update') < tlimit):
             if self.connect():
-                #(select z.config from camserver as z where z.id='BASE' LIMIT 1)
-                self.cursor.execute("""INSERT INTO camserver (id,alive,status,config) 
-                                    VALUES (%s,NULL,%s,%s) 
-                                    ON DUPLICATE KEY UPDATE alive=null, status=if(%s,VALUES(status),status)""",
-                                    (svrNombre, int(svrStatus), json.dumps(svrConf),forced))
-                out = self.conn.commit()
-                setattr(DBSource.writeSvrStatus, 'update', time.now())
-                print("Graba BBDD status",getattr(DBSource.writeSvrStatus, 'update'),svrStatus)
-                out = True
+                try:
+                    #(select z.config from camserver as z where z.id='BASE' LIMIT 1)
+                    self.cursor.execute("""INSERT INTO camserver (id,alive,status,config) 
+                                        VALUES (%s,NULL,%s,%s) 
+                                        ON DUPLICATE KEY UPDATE alive=null, status=if(%s,VALUES(status),status)""",
+                                        (svrNombre, int(svrStatus), json.dumps(svrConf),forced))
+                    out = self.conn.commit()
+                    setattr(DBSource.writeSvrStatus, 'update', time.now())
+                    print("Graba BBDD status",getattr(DBSource.writeSvrStatus, 'update'),svrStatus)
+                    out = True
+                except mysql.connector.Error as error:
+                    print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+                finally:
+                    pass
+                #self.close()
             else:
                 print("Graba BBDD status","ERROR CONEXION A BBDD")
     ##TODO: capturar errores SQL
         return out
 
     def readSvrInfo(self):
-        self.cursor.execute("""SELECT status+0 as status, config FROM camserver 
-                            WHERE id in (%s, 'BASE') 
-                            ORDER BY alive DESC LIMIT 1""", 
-                            (self.camsvr.nombre,))
-        reg = self.cursor.fetchone()
         status = Status.OFF
         server = {}
-        if not reg is None:
-            if reg[0] > 0:
-                status = Status(reg[0])
-            server = json.loads(reg[1])
+        if self.connect():
+            try:
+                self.cursor.execute("""SELECT status+0 as status, config FROM camserver 
+                                WHERE id in (%s, 'BASE') 
+                                ORDER BY alive DESC LIMIT 1""", 
+                                (self.camsvr.nombre,))
+                reg = self.cursor.fetchone()
+                if not reg is None:
+                    if reg[0] > 0:
+                        status = Status(reg[0])
+                    server = json.loads(reg[1])
+            except mysql.connector.Error as error:
+                print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+            finally:
+                pass
+            #self.close()
     ##TODO: capturar errores SQL
         return (status,server)
 
@@ -278,45 +304,70 @@ class DBSource(DataSource):
           {'nro': 2, 'coord': [X2, Y2]}, 
         ]}] '''
     def readCamInfo(self):
-        self.cursor.execute("SELECT config FROM camara WHERE activa = true")
-        reg = self.cursor.fetchall()
-        cams = list()
-        if not reg is None:
-            for r in reg:
-                cams.append(json.loads(r[0]))
+        if self.connect():
+            try:
+                self.cursor.execute("SELECT config FROM camara WHERE activa = true")
+                reg = self.cursor.fetchall()
+                cams = list()
+                if not reg is None:
+                    for r in reg:
+                        cams.append(json.loads(r[0]))
+            except mysql.connector.Error as error:
+                print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+            finally:
+                pass
+            #self.close()
     ##TODO: capturar errores SQL
         return cams
 
     def writeCamInfo(self,cams=[]):
-        for cam in cams:
-            self.cursor.execute("""UPDATE camara SET 
-                                config = %s 
-                                WHERE nombre = %s and activa = true""",
-                                (json.dumps(cam),cam["nombre"],))
-    ##TODO: capturar errores SQL
-        self.conn.commit()
-    
+        if self.connect():
+            try:
+                for cam in cams:
+                    self.cursor.execute("""UPDATE camara SET 
+                                        config = %s 
+                                        WHERE nombre = %s and activa = true""",
+                                        (json.dumps(cam),cam["nombre"],))
+            ##TODO: capturar errores SQL
+                self.conn.commit()
+            except mysql.connector.Error as error:
+                print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+            finally:
+                pass 
+
     '''Leer info de ocupación de ubicaciones de BBDD
         Output: <class 'list'> ['0', '0', '0'] '''
     def readOcupyState(self):
-        self.cursor.execute("""SELECT estadoUbicaciones FROM estado 
-                            WHERE camserver = %s 
-                            ORDER BY tstamp DESC LIMIT 1""", 
-                            (self.camsvr.nombre,))
-        reg = self.cursor.fetchone()
-        estado = list()
-        if not reg is None:
-            estado = wrap(reg[0],1)
-    ##TODO: capturar errores SQL
+        if self.connect():
+            try:
+                self.cursor.execute("""SELECT estadoUbicaciones FROM estado 
+                                    WHERE camserver = %s 
+                                    ORDER BY tstamp DESC LIMIT 1""", 
+                                    (self.camsvr.nombre,))
+                reg = self.cursor.fetchone()
+                estado = list()
+                if not reg is None:
+                    estado = wrap(reg[0],1)
+            ##TODO: capturar errores SQL
+            except mysql.connector.Error as error:
+                print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+            finally:
+                pass
         return estado
         
     def writeOcupyState(self, newState=""):
         if newState != "":
-            self.cursor.execute("""INSERT INTO estado (camserver, estadoUbicaciones) 
-                                VALUES (%s, %s)""", 
-                                (self.camsvr.nombre, int(newState), ))
-    ##TODO: capturar errores SQL
-            self.conn.commit()
+            if self.connect():
+                try:
+                    self.cursor.execute("""INSERT INTO estado (camserver, estadoUbicaciones) 
+                                        VALUES (%s, %s)""", 
+                                        (self.camsvr.nombre, int(newState), ))
+            ##TODO: capturar errores SQL
+                    self.conn.commit()
+                except mysql.connector.Error as error:
+                    print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+                finally:
+                    pass
        
     def close(self):
         if self.conn and self.conn.is_connected():
