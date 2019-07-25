@@ -48,8 +48,8 @@ class Camaras():
         self.frames = {}
         self.CONN_TIMEOUT = CONN_TIMEOUT
         self.CONN_CHECK_TIMEOUT = CONN_CHECK_TIMEOUT
-        self.tlastTime = time.now() - delta(seconds=3) #inicializo en tiempo pasado (captura o escape)
-        self.tlastCapt = time.now() - delta(seconds=3) #inicializo en tiempo pasado (solo captura)
+        self.tlastTime = time.now() # (captura o escape)
+        self.tlastCapt = time.now() # (solo captura)
     
     def getLastTime(self):
         return self.tlastTime
@@ -231,6 +231,7 @@ class DBSource(DataSource):
         self.tout = timeouts
 
     def readSvrStatus(self, defStat=Status.OFF, forced=False):
+        newVal = False
         status = defStat
         tlimit = time.now() - delta(milliseconds=self.tout['STATUS_READ'])
         if not hasattr(DBSource.readSvrStatus, 'update'):
@@ -244,18 +245,18 @@ class DBSource(DataSource):
                                         (self.camsvr.nombre,))
                     reg = self.cursor.fetchone()
                     if not reg is None and reg[0] > 0:
+                        newVal = True
                         status = Status(reg[0])
-                    setattr(DBSource.readSvrStatus, 'update', time.now())
                     print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
                 except mysql.connector.Error as error:
-                    print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+                    print("Lee BBDD status","Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
                 finally:
-                    pass
+                    setattr(DBSource.readSvrStatus, 'update', time.now())
                 #self.close()
             else:
                 print("Lee BBDD status","ERROR CONEXION A BBDD")
     ##TODO: capturar errores SQL
-        return status
+        return newVal, status
         
     # Actualizar estado y fecha de vivo (keep alive) del servidor
     def writeSvrStatus(self, svrNombre, svrStatus, svrConf, forced=False):
@@ -273,7 +274,6 @@ class DBSource(DataSource):
                                         ON DUPLICATE KEY UPDATE alive=null, status=if(%s,VALUES(status),status)""",
                                         (svrNombre, int(svrStatus), json.dumps(svrConf),forced))
                     out = self.conn.commit()
-                    setattr(DBSource.writeSvrStatus, 'update', time.now())
                     print("Graba BBDD status",getattr(DBSource.writeSvrStatus, 'update'),svrStatus)
                     out = True
                 except mysql.connector.Error as error:
@@ -281,7 +281,7 @@ class DBSource(DataSource):
                 except mysql.connector.InterfaceError as error:
                     print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
                 finally:
-                    pass
+                    setattr(DBSource.writeSvrStatus, 'update', time.now())
                 #self.close()
             else:
                 print("Graba BBDD status","ERROR CONEXION A BBDD")

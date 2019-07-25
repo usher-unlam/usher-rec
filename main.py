@@ -12,18 +12,15 @@ from datetime import timedelta as delta
 
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
-        self.conf = {"ubicaciones": 92, "frecCNN": 120, "fpsCam": 40, "fpsCNN": 4, 
+        #
+        self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCam": 40, "fpsCNN": 4, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
                     "DB_TIMEOUT" : { "CONNECT": 3, "STATUS_READ": 4000, "STATUS_WRITE": 1000 }} 
-                    #Análisis en LAN: frames{fluido,delay}= 4{si,>4"} 7{si,<1"} 10{si,~0"}
         
-            #   #Cantidad de ciclos del timer que la CNN no trabaja
-            #   #Esto es para evitar lag
-            #   self.FREC=20
-            #   self.FRECUENCIA_CNN=self.FREC
-            #   #Seteo cada cuanto tiempo se activará el timer
-            #   self.fps=40
+            # frecCNN   Cantidad de frames capturados sin procesar por CNN (para evitar lag)
+            # fpsCam    FPS capturados de cámaras
+            # fpsCNN    FPS procesados por CNN, podría ser menor a 0 (actualmente sin uso)
         self.nombre = nombre
         self.status = cn.Status.OFF
         print("Iniciando servidor",self.nombre)
@@ -33,9 +30,10 @@ class CamServer():
         #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
         self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
+
         # Establecer conexion con BBDD
         self.source = cn.DBSource(dbConfig,self.conf["DB_TIMEOUT"],self)
-        # Se pudo conectar con base de datos?
+        # Comprobar conexión con BBDD
         if not self.source.connect():
             print("Error de conexion a BBDD. Compruebe los datos de conexion.")
             exit(1)
@@ -121,21 +119,24 @@ class CamServer():
     def runService(self):
         try:
             i = self.conf["frecCNN"]
+            toutDiff = i
 
             # Bucle infinito (funciona en background como servicio)
             while not self.keyStop():
                 if self.status is cn.Status.WORKING:
-                    # Garantizar FPS de captura y FREC frames sin procesar
-                    tout1 = time.now() - delta(milliseconds=1000/self.conf["fpsCam"])
-                    tout2 = time.now() - delta(milliseconds=1000/self.conf["fpsCNN"])
-                    if ((tout1 > self.cams.getLastTime()
-                        and i < self.conf["frecCNN"])
-                        or tout2 < self.cams.getLastCapture()):
+                    if (i < self.conf["frecCNN"] or i < toutDiff):
+                        if i == 0:
+                            # Garantizar FPS de captura y FREC frames sin procesar
+                            tout = time.now() - self.cams.getLastCapture()
+                            toutDiff = (tout.total_seconds() * self.conf["fpsCam"]) - 1
+                            #print(tout,time.now(),toutDiff)
+                            #tout1 = time.now() - delta(milliseconds=1000/self.conf["fpsCam"])
+                            #tout2 = time.now() - delta(milliseconds=1000/self.conf["fpsCNN"])
                         i += 1
                         self.cams.escapeFrame()
                     else:
                         self.cams.captureFrame()
-                        print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " (",i,"descartados)")
+                        print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " camaras (",i,"descartados)")
                         i = 0 
                         if(len(self.cams.frames)):
                             frame = list(self.cams.frames.values())[0]
@@ -145,12 +146,13 @@ class CamServer():
   ####                  self.ubicaciones.addDetection(rect)
   ####                  # cada N detecciones o X tiempo
   ####                      newstate = self.ubicaciones.evaluateOcupy()
-                # Si WORKING, solo comprueba estado al capturar (evita cuando escapa frame)
+                # Si WORKING, solo comprueba estado al capturar, sino, siempre
                 if (self.status is not cn.Status.WORKING
                     or i == 0):
                     # Obtener, procesar y actualizar estado en BBDD
-                    newStatus = self.source.readSvrStatus(self.status)
-                    self.processNewState(newStatus)
+                    res, newStatus = self.source.readSvrStatus(self.status)
+                    if res:
+                        self.processNewState(newStatus)
         except IOError as e:
             print("Error IOError que no capturado correctamente.")
             #print(time.now(), "Error abriendo socket: ", ipcamUrl)
