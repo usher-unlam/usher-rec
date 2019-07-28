@@ -6,6 +6,7 @@ import mysql.connector
 import json
 from textwrap import wrap
 import socket
+import os
 from urllib.parse import urlparse
 from datetime import datetime as time
 from datetime import timedelta as delta
@@ -26,6 +27,8 @@ class CamStatus(IntEnum):
     ERR_ADDRSS = 2
     ERR_CONNTN = 3
     ERR_CV2CAP = 4
+    ERR_NOFILE = 10
+    ERR_NOACCS = 11
 
 ''' 'nombre': 'cam1', 'minUbicacion': [ANCHOpx, ALTOpx], 
         'ip': '192.168.0.10', 'desc': 'camara del techo', 
@@ -77,17 +80,36 @@ class Camaras():
                 s.close()
         return out
 
+    @staticmethod
+    def fileTest(file):
+        try:
+            f = open(file)
+            out = (CamStatus.OK ,"")
+            f.close()
+        except FileNotFoundError as e:
+            out = (CamStatus.ERR_NOFILE, "Archivo no existente: %s" % e)
+            print('Error archivo no existente:', file)
+        except IOError as e:
+            out = (CamStatus.ERR_NOACCS, "Archivo sin permiso: %s" % e)
+            print('Error archivo sin permiso para leer:', file)
+        return out
+
     #    def addCam(self, c={}):
     #        self.cams.append(c)
 
     def getUbicacionesFromCams(self):
         ubicaciones = {}
+        coord = {}
         yxyx = {}
         for cam in self.cams:
+            k = cam["nombre"]
+            coord[k] = []
+            yxyx[k] = []
             for ubi in cam["ubicaciones"]:
                 ubicaciones[ubi["nro"]] = (cam, ubi["coord"],ubi["yxyx"])
-                yxyx[cam["nombre"]] = ubi["yxyx"]
-        return (ubicaciones, yxyx)
+                coord[k].append(ubi["coord"])
+                yxyx[k].append(ubi["yxyx"])
+        return (ubicaciones, coord, yxyx)
 
     def checkConn(self):
         #self.camstat = [(tstamp,estado)]
@@ -98,7 +120,10 @@ class Camaras():
                 or self.camstat[cam["nombre"]][0] < tlimit):
     ##TODO: Chequear si no es url (ej: 0 o "file.mp4")
                 url = urlparse(cam["url"])
-                out, msj = Camaras.urlTest(url.hostname,url.port)
+                if url.netloc != '':
+                    out, msj = Camaras.urlTest(url.hostname,url.port)
+                else:
+                    out, msj = Camaras.fileTest(url.hostname,url.port)
                 self.setCamStat(cam["nombre"], out, msj)
     
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):

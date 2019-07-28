@@ -12,7 +12,7 @@ from datetime import timedelta as delta
 
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
-        #
+        self.MAX_ESCAPE_FRAMES = 600
         self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCam": 40, "fpsCNN": 4, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
@@ -29,8 +29,10 @@ class CamServer():
         PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
         #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
-        self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
+        self.rn = None
 
+        self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
+        
         # Establecer conexion con BBDD
         self.source = cn.DBSource(dbConfig,self.conf["DB_TIMEOUT"],self)
         # Comprobar conexión con BBDD
@@ -58,6 +60,12 @@ class CamServer():
             newConf = self.conf
         
         self.conf = newConf
+        # Obtener ID de Clase a detectar 
+        self.className = "person"
+        self.classId = self.rn.getClassId(self.className)
+        if self.classId is None:
+            pass
+            print("Error hallando id de clase o categoría a detectar:",self.className)
         # Actualiza configuracion BBDD
         self.source.setup(self.conf["DB_TIMEOUT"])
 
@@ -124,7 +132,7 @@ class CamServer():
             # Bucle infinito (funciona en background como servicio)
             while not self.keyStop():
                 if self.status is cn.Status.WORKING:
-                    if (i < self.conf["frecCNN"] or i < toutDiff):
+                    if (i < self.conf["frecCNN"] or i < toutDiff) and i < self.MAX_ESCAPE_FRAMES:
                         if i == 0:
                             # Garantizar FPS de captura y FREC frames sin procesar
                             tout = time.now() - self.cams.getLastCapture()
@@ -138,14 +146,18 @@ class CamServer():
                         self.cams.captureFrame()
                         print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " camaras (",i,"descartados)")
                         i = 0 
-                        if(len(self.cams.frames)):
-                            frame = list(self.cams.frames.values())[0]
-                            print("-> Procesando frame >",list(self.cams.frames)[0])
-  ####                  rect = self.rn.detect(self.cams.frames, "personaSentada", 
-  ####                                        float(self.conf["ppersona"]))
-  ####                  self.ubicaciones.addDetection(rect)
-  ####                  # cada N detecciones o X tiempo
-  ####                      newstate = self.ubicaciones.evaluateOcupy()
+                        if len(self.cams.frames) > 0:
+                            if self.rn.canDetect():
+                                frame = list(self.cams.frames.values())[0]
+                                print("-> Procesando frame >",list(self.cams.frames)[0])
+                                rect = self.rn.detect(self.cams.frames, 
+                                                    classFilterName=self.className, classFilterId=self.classId, 
+                                                    scoreFilter=float(self.conf["ppersona"]))
+                                # self.ubicaciones.addDetection(rect)
+    ####                  # cada N detecciones o X tiempo
+    ####                      newstate = self.ubicaciones.evaluateOcupy()
+                            else:
+                                print("Advertencia: RN ocupada (no detectará)")
                 # Si WORKING, solo comprueba estado al capturar, sino, siempre
                 if (self.status is not cn.Status.WORKING
                     or i == 0):
@@ -154,7 +166,7 @@ class CamServer():
                     if res:
                         self.processNewState(newStatus)
         except IOError as e:
-            print("Error IOError que no capturado correctamente.")
+            print("Error IOError no capturado correctamente.")
             #print(time.now(), "Error abriendo socket: ", ipcamUrl)
         except cv2.error as e:
             print(time.now(), "Error CV2: ", e)
@@ -169,10 +181,11 @@ class CamServer():
     #        print(time.now(), "Error desconocido: ", e)
 
 if __name__ == "__main__":
+    ##TODO: recibir lo siguiente como parámetros de entrada
     serverName = "SVR1"
     dbConfig = {'user':"usher",
                 'passwd':"usher101",
-                'svr':"usher.sytes.net",
+                'svr': "usher.sytes.net",
                 'db':"usher_rec"}
     sys.path.append("..")
     rnConfig = [
