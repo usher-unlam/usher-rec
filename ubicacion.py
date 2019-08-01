@@ -65,23 +65,24 @@ class RN():
             print("Error RN trabajando")
             return None
         c = className.upper()
-        for id,nom in self.category_index.values():
-            if nom.upper() == c:
-                return id
+        for i,val in enumerate(self.category_index.values()):
+            if val['name'].upper() == c:
+                return val['id']
         return None
 
     def canDetect(self):
         return not self.working.locked()
 
-    def detect(self, frames, classFilterName="",classFilterId=-1, scoreFilter=0.5):
+    # Detecta objetos en frames y filtra por clase indicada
+    def detect(self, frames, classFilterName="",classFilterId=None, scoreFilter=0.5):
         det = 0
         rect = {}
+        # Obtener id de clase o categoria
+        if classFilterId is None:
+            classFilterId = self.getClassId(classFilterName)
         self.working.acquire()
     #        rcent = []
     #        rdims = []
-        # Obtener id de clase o categoria
-        if classFilterId == -1:
-            classFilterId = self.getClassId(classFilterName)
         self.boxes = {}; self.scores = {}; self.classes = {}; self.num = {}
         for k,f in frames.items():
             if len(f) > 0:
@@ -115,13 +116,9 @@ class RN():
                             # ymax = (int(box[index,2] * height))
                             # xmax = (int(box[index,3] * width))
                             # operado como (Y,X) a diferencia de Rectangle
+                            if not k in rect:
+                                rect[k] = []
                             rect[k].append((box[index] * [height,width,height,width]).astype(int))
-    ##TODO: calcular centro y dimensiones de forma matricial
-                            #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
-    #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
-    #                            rcent[k].append(cbox)
-    #                            dbox = (ymax-ymin,xmax-xmin)
-    #                            rdims[k].append(dbox) #dimension: (alto,ancho)
                             #print('Silla ',index,' [Xmin,Ymin,Xmax,Ymax]=',rbox,' Centro=',cbox,' Dimensiones:',dbox)
         self.working.release()
         return rect
@@ -197,6 +194,7 @@ class RN():
         # espera (ymin,xmin,ymax,xmax) para a y b
         return (min(a[0], b[0]),min(a[1],b[1]),max(a[2],b[2]),max(a[3],b[3]))
     
+    # Halla rectángulos con ID duplicado y los fusiona
     @staticmethod
     def fusionDuplicatedId(rect, rectId):
         print('-> Filtrando duplicados')
@@ -206,8 +204,9 @@ class RN():
                                                     return_inverse=True, 
                                                     return_counts=True, 
                                                     axis=0)
+        print(sident)
         # fusionar rectángulos id duplicados
-        f = np.zeros((rectId.shape[0],rect.shape[1]))
+        f = np.zeros((sident.shape[0],rect.shape[1]))
         print('-> Fusionando duplicados') #f
         for i,idup in enumerate(sdupIDX):
             #si no está agregado, lo agrego en la posición idup
@@ -215,17 +214,48 @@ class RN():
                 f[idup] = rect[sunqIDX[idup]]
             else:
                 f[idup] = RN.fusion(f[idup],rect[sunqIDX[idup]])
+        print(f)
         return f,sident
 
+    # Fusiona rectángulos solapados con cierto grado de solapamiento e intersección
+    @staticmethod
+    def fusionOverlapIntersect(rect):
+        print('-> Fusiónando por Solapamiento-Intersección')
+        r = np.array(rect)
+        rOverlap = compute_overlaps(r,r)
+        #Calcular intersección entre sillas
+        rInters = compute_intersection(r,r)
+        #Fusionar/Extender rectángulos solapados
+        solapX = r.shape[0]
+        f = []
+        #print('Inicio de Fusión/Extensión')
+        for i in range(solapX - 1):
+            if rInters[i][i] == 1:
+                ins = rect[i]
+                for j in range(i+1, rOverlap.shape[0]):
+                    if rInters[j][j] != 0:
+                        #Empleando SOLAPAMIENTO
+                        if rOverlap[i][j] > 0.5:
+                            ins = fusion(ins,rect[j])
+                            sinters[j][j] = 0 #anulo el posterior procesamiento de este elemento
+                            print(i+1,',',j+1,'  ', ins, ' x solapamiento')
+                        #Empleando INTERSECCIÓN
+                        elif max(rInters[i][j],rInters[j][i]) > 0.7:
+                            ins = fusion(ins,rect[j])
+                            sinters[j][j] = 0 #anulo el posterior procesamiento de este elemento
+                            print(i+1,',',j+1,'  ', ins, ' x intersección')
+                f.append(ins)
+        f = np.array(f)
+        return f
 
     ''' Identifica rectángulos en una cámara específica
-        out: coordenadas=(Y * H_minUbicacion, X * W_minUbicacion)'''
+        out: (coordY, coordX) = (Y / H_minUbicacion, X / W_minUbicacion)'''
     @staticmethod
     def identify(rect, mindim):
         print('-> Identificando rectangulos')
         # obtiene recuadro mínimo desde configuración de ubicacion
         dimmin = np.array(mindim)
-        print('-> Dimensión Mínima:', dimmin.shape, '\t', dimmin)
+        print('-> Dimensión Mínima:', dimmin, dimmin.shape)
         # calcular centro de rectángulos
         cent = np.trunc(np.concatenate(
                 (np.expand_dims(
@@ -247,58 +277,89 @@ class RN():
 
 
 class Ubicacion():
-    def __init__(self, bstat, cams):
-        self.estado = bstat
-        self.estados = [] #histórico de estados de ocupación
+    def __init__(self, laststat, cams):
+        self.ocupyState = laststat
+        self.states = [] #histórico de estados de ocupación
         self.cams = cams
         # Obtener referencias de cámaras x ubicacion, matrices [coordY,coordX] / [Ymin,Xmin,Ymax,Xmax] x cámara
-        self.ubiCam, self.camCoord, self.camYXYX = cams.getUbicacionesFromCams()
-        # Convertir a Numpy array
-        self.camCoord = np.array(self.camCoord)
-        self.camYXYX = np.array(self.camYXYX)
+        self.ubiCam, self.camMinFrame, self.camNum, self.camCoord, self.camYXYX = cams.getUbicacionesFromCams()
+        # # Convertir a Numpy array
+        # self.camCoord = np.array(self.camCoord)
+        # self.camYXYX = np.array(self.camYXYX)
 
         self.tlastEval = time.now() # (solo evaluacion)
+
+    def count(self):
+        return len(self.ocupyState)
 
     def getLastEval(self):
         return self.tlastEval
 
     ''' Agregar reconocimiento y evaluar estado contra ubicaciones'''
     def addDetection(self, rect):
+        # self.camMinFrame['cam2'] = [[145, 107]]
+        # self.camCoord['cam2'] = [[10., 19.],[ 7., 19.],[ 6., 13.],[ 6., 20.],[ 5., 12.]]
+        # self.camYXYX['cam2'] = [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]
+        # rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
         #for u,c in self.ubicacionesCam:
         #    cam = c[0]
+        print("ubiCoord:\n",self.camCoord['cam2'])
+        print("ubiYXYX:\n",self.camYXYX['cam2'])
+        print("rect:\n",rect)
         for k,r in rect.items():
             #recorro camaras y sus rectángulos reconocidos
             if len(r) > 0:
+                r = np.array(r)
+                ubiCoord = np.array(self.camCoord[k])
+                ubiYXYX = np.array(self.camYXYX[k])
+    ##TODO: calcular centro y dimensiones de forma matricial
+                            #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
+    #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
+    #                            rcent[k].append(cbox)
+    #                            dbox = (ymax-ymin,xmax-xmin)
+    #                            rdims[k].append(dbox) #dimension: (alto,ancho)
+    # 
                 ##obtengo ubicaciones por cámara
-                ##identificar rectángulos con minUbicacion por cámara
-                coord = RN.identify(k, r, self.cams[k]["minUbicacion"])
-                ##calcular iou y overlap con COORD de ubicaciones de la cámara
-                overlap = RN.compute_overlaps(coord,self.camCoord[k])
-                print('Solapamiento Coordenadas:\n', overlap)
-                #Calcular intersección con COORD de ubicaciones de la camara
-                inters = RN.compute_intersection(coord,self.camCoord[k])
-                print('Intersección Coordenadas:\n', inters)
-                ##calcular iou y overlap con YXYX de ubicaciones de la cámara
-                overlap = RN.compute_overlaps(r,self.camYXYX[k])
-                print('Solapamiento YXYX:\n', overlap)
-                #Calcular intersección con YXYX de ubicaciones de la cámara
-                inters = RN.compute_intersection(r,self.camYXYX[k])
-                print('Intersección YXYX:\n', inters)
-           
-                ##fusionar rectangulos con coord duplicadas
-                r2,coord2 = RN.fusionDuplicatedId(r,coord)
-                ##calcular iou y overlap con COORD de ubicaciones de la cámara
-                overlap = RN.compute_overlaps(coord2,self.camCoord[k])
-                print('Solapamiento Coordenadas:\n', overlap)
-                #Calcular intersección con COORD de ubicaciones de la camara
-                inters = RN.compute_intersection(coord2,self.camCoord[k])
-                print('Intersección Coordenadas:\n', inters)
-                ##calcular iou y overlap con YXYX de ubicaciones de la cámara
-                overlap = RN.compute_overlaps(r2,self.camYXYX[k])
-                print('Solapamiento YXYX:\n', overlap)
-                #Calcular intersección con YXYX de ubicaciones de la cámara
-                inters = RN.compute_intersection(r2,self.camYXYX[k])
-                print('Intersección YXYX:\n', inters)
+
+                est = self.__evaluateOcupy(self.camNum[k],ubiYXYX,ubiCoord, self.camMinFrame[k], r)
+                print(est)
+                self.states.append([time.now(),est])
+
+    def __evaluateOcupy(self, ubiN, ubiR, ubiC, ubiMin, rect1):
+        coord1 = RN.identify(rect1, ubiMin)
+        #calcular iou y overlap con YXYX de ubicaciones de la cámara
+        over1 = RN.compute_overlaps(rect1,ubiR)
+        print('Solapamiento YXYX:\n', over1)
+        #Calcular intersección con YXYX de ubicaciones de la cámara
+        inter1 = RN.compute_intersection(rect1,ubiR)
+        print('Intersección YXYX:\n', inter1)
+
+        ##fusionar rectangulos con coord duplicadas
+        rect2,coord2 = RN.fusionDuplicatedId(rect1,coord1)
+        #calcular iou y overlap con YXYX de ubicaciones de la cámara
+        over2 = RN.compute_overlaps(rect2,ubiR)
+        print('Solapamiento YXYX:\n', over2)
+        #Calcular intersección con YXYX de ubicaciones de la cámara
+        inter2 = RN.compute_intersection(rect2,ubiR)
+        print('Intersección YXYX:\n', inter2)
+        
+        est = np.zeros( (self.count() - 1,) )
+        #ubiCord = sorted(ubiC.items(), key = lambda kv:(kv[1], kv[0]))
+        #print(ubiCord)
+        #ubiCord = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
+        #print(ubiCord)
+        j = 0
+        for i,c in enumerate(ubiC):
+            while j<len(coord1) and (
+                coord1[j][0] < c[0] or coord1[j][1] < c[1]):
+                j += 1
+            if j == len(coord1):
+                break
+            if coord1[j][0] < c[0] or coord1[j][1] < c[1]:
+                print(c, "vs", coord1[j])
+                est[ubiN[i]] = 1
+                j += 1
+        return est
 
     def evaluateOcupy(self):
         self.tlastEval = time.now()

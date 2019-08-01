@@ -12,7 +12,7 @@ from datetime import timedelta as delta
 
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
-        self.MAX_ESCAPE_FRAMES = 600
+        self.MAX_ESCAPE_FRAMES = 100
         self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCam": 40, "fpsCNN": 4, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
@@ -153,7 +153,7 @@ class CamServer():
                                 rect = self.rn.detect(self.cams.frames, 
                                                     classFilterName=self.className, classFilterId=self.classId, 
                                                     scoreFilter=float(self.conf["ppersona"]))
-                                # self.ubicaciones.addDetection(rect)
+                                self.ubicaciones.addDetection(rect)
     ####                  # cada N detecciones o X tiempo
     ####                      newstate = self.ubicaciones.evaluateOcupy()
                             else:

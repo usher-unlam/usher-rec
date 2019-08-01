@@ -99,17 +99,24 @@ class Camaras():
 
     def getUbicacionesFromCams(self):
         ubicaciones = {}
+        minFr = {}
+        camNum = {}
         coord = {}
         yxyx = {}
         for cam in self.cams:
             k = cam["nombre"]
+            minFr[k] = cam["minUbicacion"]
+            camNum[k] = []
             coord[k] = []
             yxyx[k] = []
             for ubi in cam["ubicaciones"]:
-                ubicaciones[ubi["nro"]] = (cam, ubi["coord"],ubi["yxyx"])
+                if not ubi["nro"] in ubicaciones:
+                    ubicaciones[ubi["nro"]] = {}
+                ubicaciones[ubi["nro"]][k] = (cam, ubi["coord"],ubi["yxyx"])
+                camNum[k].append(ubi["nro"])
                 coord[k].append(ubi["coord"])
                 yxyx[k].append(ubi["yxyx"])
-        return (ubicaciones, coord, yxyx)
+        return (ubicaciones, minFr, camNum, coord, yxyx)
 
     def checkConn(self):
         #self.camstat = [(tstamp,estado)]
