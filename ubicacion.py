@@ -256,7 +256,7 @@ class RN():
     def identify(rect, mindim):
         rect = np.array(rect)
         print('-> Identificando rectangulos')
-        # obtiene recuadro mínimo desde configuración de ubicacion
+        # obtiene recuadro mínimo desde parametro de entrada
         dimmin = np.array(mindim)
         print('-> Dimensión Mínima:', dimmin, dimmin.shape)
         # calcular centro de rectángulos
@@ -268,20 +268,31 @@ class RN():
                         np.divide(rect[:, 1] + rect[:, 3],2),
                         axis=1)
                 ),axis=1))
-        # # obtengo tamaño de rectángulos
-        # sdims = np.concatenate((
-        #         np.expand_dims(rect[:, 2] - rect[:, 0],axis=1), 
-        #         np.expand_dims(rect[:, 3] - rect[:, 1],axis=1)
-        #         ),axis=1).astype('int32')
         # identificar, calculando coordenadas
         ident = np.trunc(np.true_divide(cent, dimmin))
         return ident
 
+    ''' Obtiene dimensiones de rectángulo minimo dentro de una coleccion de rectángulos '''
+    @staticmethod
+    def minRect(rect):
+        print('-> Obteniendo rectángulo mínimo')
+        # obtener tamaño de rectángulos
+        dims = np.concatenate((
+                np.expand_dims(rect[:, 2] - rect[:, 0],axis=1), 
+                np.expand_dims(rect[:, 3] - rect[:, 1],axis=1)
+                ),axis=1).astype('int32')
+        print("Dimensiones:",dims)
+        # obtener dimensión mínima de rectángulo
+        mindim = np.amin(rect, axis=0).reshape(1,2)
+        print("Dimensión mínima:", mindim)
+        return mindim
+
 
 
 class Ubicacion():
-    def __init__(self, laststat, cams, evalLastMillis=500):
+    def __init__(self, laststat, cams, evalLastMillis=500, ignoreChar='_'):
         self.EVAL_LASTMILLIS = evalLastMillis
+        self.DEF_IGNORE_CHAR = ignoreChar
         self.ocupyState = laststat
         self.states = {} #histórico de estados de ocupación
         self.cams = cams
@@ -290,8 +301,11 @@ class Ubicacion():
         # # Convertir a Numpy array
         # self.camCoord = np.array(self.camCoord)
         # self.camYXYX = np.array(self.camYXYX)
+        # Calcular cuadro mìnimo si no estuviera en BBDD
         # Calcular coordenadas si no estuvieran en BBDD
         for cam,coord in self.camCoord.items():
+            if len(self.camMinFrame[cam]) == 0:
+                self.camMinFrame[cam] = RN.minRect(self.camYXYX[cam]) 
             self.states[cam] = {"upd": [], "stat": []}
             if len(coord) == 0:
                 coord = RN.identify(self.camYXYX[cam], self.camMinFrame[cam])
@@ -305,11 +319,11 @@ class Ubicacion():
 
     ''' Agregar reconocimiento y evaluar estado contra ubicaciones'''
     def addDetection(self, rect):
-        self.camMinFrame['cam2'] = [[145, 107]]
-        self.camYXYX['cam2'] = [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]
-        self.camCoord['cam2'] = RN.identify(self.camYXYX['cam2'], self.camMinFrame['cam2']) 
-        #[[2.,3.],[1.,3.],[1.,2.],[1.,3.],[1.,2.]] # [[10., 19.],[ 7., 19.],[ 6., 13.],[ 6., 20.],[ 5., 12.]]
-        rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
+        # self.camMinFrame['cam2'] = [[145, 107]]
+        # self.camYXYX['cam2'] = [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]
+        # self.camCoord['cam2'] = RN.identify(self.camYXYX['cam2'], self.camMinFrame['cam2']) 
+        # #[[2.,3.],[1.,3.],[1.,2.],[1.,3.],[1.,2.]] # [[10., 19.],[ 7., 19.],[ 6., 13.],[ 6., 20.],[ 5., 12.]]
+        # rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
         #for u,c in self.ubicacionesCam:
         #    cam = c[0]
         print("ubiCoord:\n",self.camCoord['cam2'])
@@ -380,11 +394,11 @@ class Ubicacion():
     # Devuelve la fecha/hora, el estado nuevo calculado, un bool indicando si cambió respecto al estado anterior
     def evaluateOcupy(self):
         DEF_EMPTY_VAL = 9
-        DEF_IGNORE_CHAR = '_'
         tCurrEval = time.now()
         tout = tCurrEval - delta(milliseconds=self.EVAL_LASTMILLIS)
         cambio = False
         if tout > self.tlastEval:
+            evaluo = False
             ests = np.full( (len(self.camNum), self.count()), DEF_EMPTY_VAL ) #lleno de DEF_EMPTY_VAL
             # Inicializar pesos por cámara y ubicación
             pesos = np.ones( ests.shape ) #lleno de 1
@@ -407,14 +421,19 @@ class Ubicacion():
                             pesos[:,ubi] = 0
                             pesosInit[ubi] = 1
                         pesos[c,ubi] = peso
-            # Evaluar estados de una misma ubicacion (promedio ponderado redondeando 0.5 hacia arriba)
-            currEval = (np.average(ests,axis=0,weights=pesos) + 0.00001).round().astype(int)
-            self.tlastEval = tCurrEval
-            # Convertir valor a texto/string, omitir ubicaciones no reconocidas
-            #estChar = np.array2string(currEval.astype(int),separator='')[1:-1].replace(str(DEF_EMPTY_VAL),DEF_IGNORE_CHAR)
-            estChar = np.char.replace(currEval.astype(int).astype(str),str(DEF_EMPTY_VAL),DEF_IGNORE_CHAR)
-            cambio = not np.array_equal(self.ocupyState, estChar)
-            self.ocupyState = estChar
+                    evaluo = True
+            if evaluo:
+                # Evaluar estados de una misma ubicacion (promedio ponderado redondeando 0.5 hacia arriba)
+                currEval = (np.average(ests,axis=0,weights=pesos) + 0.00001).round().astype(int)
+                self.tlastEval = tCurrEval
+                # Convertir valor a texto/string, omitir ubicaciones no reconocidas
+                #estChar = np.array2string(currEval.astype(int),separator='')[1:-1].replace(str(DEF_EMPTY_VAL),self.DEF_IGNORE_CHAR)
+                estChar = np.char.replace(currEval.astype(int).astype(str),str(DEF_EMPTY_VAL),self.DEF_IGNORE_CHAR)
+            # Establece 'cambio' solo si difiere de estado anterior
+            # En este caso no se actualizaría el tstamp de 'estado' sino solo el 'update' del servidor
+            #cambio = not np.array_equal(self.ocupyState, estChar) 
+            cambio = True
+            self.ocupyState = estChar.tolist()
         return self.tlastEval, self.ocupyState, cambio
             #r2 = (np.mean(r,axis=0) + 0.00001).round()
             # >>> p

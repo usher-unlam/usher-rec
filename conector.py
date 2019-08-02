@@ -411,17 +411,24 @@ class DBSource(DataSource):
                 pass
         return estado
         
-    def writeOcupyState(self, newState=""):
+    def writeOcupyState(self,tnewState=None, newState=[]):
+        newState = ''.join(newState)
         if newState != "":
             if self.connect():
                 try:
-                    self.cursor.execute("""INSERT INTO estado (camserver, estadoUbicaciones) 
-                                        VALUES (%s, %s)""", 
-                                        (self.camsvr.nombre, int(newState), ))
+                    self.cursor.execute("""INSERT INTO estado (tstamp, prioridad, estadoUbicaciones, camserver) 
+                                                VALUES (%s, 255, %s, %s)
+                                                ON DUPLICATE KEY UPDATE tstamp=VALUES(tstamp), estadoUbicaciones=VALUES(estadoUbicaciones)""", 
+                                                (tnewState, newState, self.camsvr.nombre))
+                    # script = self.cursor.execute("""UPDATE estado SET tstamp=%s, estadoUbicaciones=%s 
+                    #                             WHERE camserver = %s""", 
+                    #                             (tnewState, newState, self.camsvr.nombre))
             ##TODO: capturar errores SQL
                     self.conn.commit()
                 except mysql.connector.Error as error:
                     print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
+                except BaseException as e:
+                    print(time.now(), "Error desconocido grabando estado: ", e)
                 finally:
                     pass
        

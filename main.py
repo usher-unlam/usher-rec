@@ -10,14 +10,17 @@ import conector as cn
 from datetime import datetime as time
 from datetime import timedelta as delta
 
+from textwrap import wrap
+
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
         self.MAX_ESCAPE_FRAMES = 100
+        self.DEF_IGNORE_CHAR = '_'
         self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCam": 40, "fpsCNN": 4, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
                     "DB_TIMEOUT" : { "CONNECT": 3, "STATUS_READ": 4000, "STATUS_WRITE": 1000 },
-                    "EVAL_LAST_MILLIS": 800} 
+                    "EVAL_LAST_MILLIS": 1500} 
         
             # frecCNN   Cantidad de frames capturados sin procesar por CNN (para evitar lag)
             # fpsCam    FPS capturados de cámaras
@@ -77,11 +80,14 @@ class CamServer():
         c = self.source.readCamInfo() ##debería indicar cams a buscar
         #obtiene estado de ubicaciones (útil al recuperar post falla)
         b = self.source.readOcupyState()
+        # Estado por defecto cuando no hay registro previo en BBDD
+        if len(b) == 0:
+            b = wrap(self.DEF_IGNORE_CHAR *int(self.conf["ubicaciones"]) ,1)
         
         self.cams = cn.Camaras(c,self.conf["CONN_TIMEOUT"],self.conf["CONN_CHECK_TIMEOUT"])
         #comprobar conexión de cámaras por primera vez
         self.cams.checkConn()
-        self.ubicaciones = ubi.Ubicacion(b,self.cams,self.conf["EVAL_LAST_MILLIS"])
+        self.ubicaciones = ubi.Ubicacion(b,self.cams,self.conf["EVAL_LAST_MILLIS"],self.DEF_IGNORE_CHAR)
 
         return newStatus
         
@@ -156,11 +162,11 @@ class CamServer():
                                                     classFilterName=self.className, classFilterId=self.classId, 
                                                     scoreFilter=float(self.conf["ppersona"]))
                                 self.ubicaciones.addDetection(rect)
-    ####                  # cada N detecciones o X tiempo
-                                newstate, tnewstate, isnew = self.ubicaciones.evaluateOcupy()
+                                # Evalúa ocupación cada X tiempo, analizando un grupo de detecciones
+                                tnewstate, newstate, isnew = self.ubicaciones.evaluateOcupy()
                                 if isnew:
-                                    #TODO: grabar nuevo estado en BBDD
-                                    pass
+                                    #graba nuevo estado en BBDD
+                                    self.source.writeOcupyState(tnewstate,newstate)
                             else:
                                 print("Advertencia: RN ocupada (no detectará)")
                 # Si WORKING, solo comprueba estado al capturar, sino, siempre
