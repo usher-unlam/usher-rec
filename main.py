@@ -16,7 +16,8 @@ class CamServer():
         self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCam": 40, "fpsCNN": 4, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
-                    "DB_TIMEOUT" : { "CONNECT": 3, "STATUS_READ": 4000, "STATUS_WRITE": 1000 }} 
+                    "DB_TIMEOUT" : { "CONNECT": 3, "STATUS_READ": 4000, "STATUS_WRITE": 1000 },
+                    "EVAL_LAST_MILLIS": 800} 
         
             # frecCNN   Cantidad de frames capturados sin procesar por CNN (para evitar lag)
             # fpsCam    FPS capturados de cámaras
@@ -59,7 +60,8 @@ class CamServer():
             newStatus = self.status
             newConf = self.conf
         
-        self.conf = newConf
+        # Actualizar diccionario de configuracion (se reemplazan valores coincidentes)
+        self.conf.update(newConf)
         # Obtener ID de Clase a detectar 
         self.className = "person"
         self.classId = self.rn.getClassId(self.className)
@@ -79,7 +81,7 @@ class CamServer():
         self.cams = cn.Camaras(c,self.conf["CONN_TIMEOUT"],self.conf["CONN_CHECK_TIMEOUT"])
         #comprobar conexión de cámaras por primera vez
         self.cams.checkConn()
-        self.ubicaciones = ubi.Ubicacion(b,self.cams)
+        self.ubicaciones = ubi.Ubicacion(b,self.cams,self.conf["EVAL_LAST_MILLIS"])
 
         return newStatus
         
@@ -155,7 +157,10 @@ class CamServer():
                                                     scoreFilter=float(self.conf["ppersona"]))
                                 self.ubicaciones.addDetection(rect)
     ####                  # cada N detecciones o X tiempo
-    ####                      newstate = self.ubicaciones.evaluateOcupy()
+                                newstate, tnewstate, isnew = self.ubicaciones.evaluateOcupy()
+                                if isnew:
+                                    #TODO: grabar nuevo estado en BBDD
+                                    pass
                             else:
                                 print("Advertencia: RN ocupada (no detectará)")
                 # Si WORKING, solo comprueba estado al capturar, sino, siempre

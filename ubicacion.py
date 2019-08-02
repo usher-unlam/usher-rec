@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime as time
+from datetime import timedelta as delta
 import numpy as np
+from numpy.lib import recfunctions as rfn
 import tensorflow as tf
 # Importación del módulo de detección de objetos.
 from object_detection.utils import label_map_util
@@ -252,6 +254,7 @@ class RN():
         out: (coordY, coordX) = (Y / H_minUbicacion, X / W_minUbicacion)'''
     @staticmethod
     def identify(rect, mindim):
+        rect = np.array(rect)
         print('-> Identificando rectangulos')
         # obtiene recuadro mínimo desde configuración de ubicacion
         dimmin = np.array(mindim)
@@ -277,16 +280,21 @@ class RN():
 
 
 class Ubicacion():
-    def __init__(self, laststat, cams):
+    def __init__(self, laststat, cams, evalLastMillis=500):
+        self.EVAL_LASTMILLIS = evalLastMillis
         self.ocupyState = laststat
-        self.states = [] #histórico de estados de ocupación
+        self.states = {} #histórico de estados de ocupación
         self.cams = cams
         # Obtener referencias de cámaras x ubicacion, matrices [coordY,coordX] / [Ymin,Xmin,Ymax,Xmax] x cámara
-        self.ubiCam, self.camMinFrame, self.camNum, self.camCoord, self.camYXYX = cams.getUbicacionesFromCams()
+        self.ubiCam, self.camMinFrame, self.camNum, self.camWeight, self.camCoord, self.camYXYX = cams.getUbicacionesFromCams()
         # # Convertir a Numpy array
         # self.camCoord = np.array(self.camCoord)
         # self.camYXYX = np.array(self.camYXYX)
-
+        # Calcular coordenadas si no estuvieran en BBDD
+        for cam,coord in self.camCoord.items():
+            self.states[cam] = {"upd": [], "stat": []}
+            if len(coord) == 0:
+                coord = RN.identify(self.camYXYX[cam], self.camMinFrame[cam])
         self.tlastEval = time.now() # (solo evaluacion)
 
     def count(self):
@@ -297,33 +305,36 @@ class Ubicacion():
 
     ''' Agregar reconocimiento y evaluar estado contra ubicaciones'''
     def addDetection(self, rect):
-        # self.camMinFrame['cam2'] = [[145, 107]]
-        # self.camCoord['cam2'] = [[10., 19.],[ 7., 19.],[ 6., 13.],[ 6., 20.],[ 5., 12.]]
-        # self.camYXYX['cam2'] = [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]
-        # rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
+        self.camMinFrame['cam2'] = [[145, 107]]
+        self.camYXYX['cam2'] = [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]
+        self.camCoord['cam2'] = RN.identify(self.camYXYX['cam2'], self.camMinFrame['cam2']) 
+        #[[2.,3.],[1.,3.],[1.,2.],[1.,3.],[1.,2.]] # [[10., 19.],[ 7., 19.],[ 6., 13.],[ 6., 20.],[ 5., 12.]]
+        rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
         #for u,c in self.ubicacionesCam:
         #    cam = c[0]
         print("ubiCoord:\n",self.camCoord['cam2'])
         print("ubiYXYX:\n",self.camYXYX['cam2'])
         print("rect:\n",rect)
+        update = time.now()
         for k,r in rect.items():
             #recorro camaras y sus rectángulos reconocidos
             if len(r) > 0:
                 r = np.array(r)
                 ubiCoord = np.array(self.camCoord[k])
                 ubiYXYX = np.array(self.camYXYX[k])
-    ##TODO: calcular centro y dimensiones de forma matricial
-                            #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
-    #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
-    #                            rcent[k].append(cbox)
-    #                            dbox = (ymax-ymin,xmax-xmin)
-    #                            rdims[k].append(dbox) #dimension: (alto,ancho)
-    # 
+        ##TODO: ¿calcular centro y dimensiones de forma matricial?
+                                #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
+        #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
+        #                            rcent[k].append(cbox)
+        #                            dbox = (ymax-ymin,xmax-xmin)
+        #                            rdims[k].append(dbox) #dimension: (alto,ancho)
+        # 
                 ##obtengo ubicaciones por cámara
 
                 est = self.__evaluateOcupy(self.camNum[k],ubiYXYX,ubiCoord, self.camMinFrame[k], r)
-                print(est)
-                self.states.append([time.now(),est])
+                print("Ubicaciones",k,"\n",est)
+                self.states[k]["upd"].append(update)
+                self.states[k]["stat"].append(est)
 
     def __evaluateOcupy(self, ubiN, ubiR, ubiC, ubiMin, rect1):
         coord1 = RN.identify(rect1, ubiMin)
@@ -343,26 +354,84 @@ class Ubicacion():
         inter2 = RN.compute_intersection(rect2,ubiR)
         print('Intersección YXYX:\n', inter2)
         
-        est = np.zeros( (self.count() - 1,) )
-        #ubiCord = sorted(ubiC.items(), key = lambda kv:(kv[1], kv[0]))
-        #print(ubiCord)
-        #ubiCord = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
-        #print(ubiCord)
+        # Definir ocupación de ubicación (ocupado/libre)
+        est = np.zeros( (ubiR.shape[0],) )
+        # Ordenar coordenadas
+        coordtype = [('y', int), ('x', int)]
+        ordUbiC = np.sort(np.array(ubiC,dtype=coordtype),axis=0,order=['y','x'])
+        ordC = np.sort(np.array(coord2,dtype=coordtype),axis=0,order=['y','x'])
+        ordUbiC = np.squeeze(rfn.structured_to_unstructured(ordUbiC[['x']]),axis=2)
+        ordC = np.squeeze(rfn.structured_to_unstructured(ordC[['x']]),axis=2)
+        #print(ordUbiC)
+        #ordUbiC = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
+        #print(ordUbiC)
         j = 0
-        for i,c in enumerate(ubiC):
-            while j<len(coord1) and (
-                coord1[j][0] < c[0] or coord1[j][1] < c[1]):
+        for i,c in enumerate(ordUbiC):
+            while j<len(ordC) and bool(np.greater(c,ordC[j]).sum()):
                 j += 1
-            if j == len(coord1):
+            if j == len(ordC):
                 break
-            if coord1[j][0] < c[0] or coord1[j][1] < c[1]:
-                print(c, "vs", coord1[j])
-                est[ubiN[i]] = 1
+            if np.array_equal(c, ordC[j]):
+                print(c, "vs", ordC[j])
+                est[i] = 1
                 j += 1
         return est
 
+    # Devuelve la fecha/hora, el estado nuevo calculado, un bool indicando si cambió respecto al estado anterior
     def evaluateOcupy(self):
-        self.tlastEval = time.now()
-        # deleting items from 2nd to 4th
-        del my_list[1:4]
-        pass
+        DEF_EMPTY_VAL = 9
+        DEF_IGNORE_CHAR = '_'
+        tCurrEval = time.now()
+        tout = tCurrEval - delta(milliseconds=self.EVAL_LASTMILLIS)
+        cambio = False
+        if tout > self.tlastEval:
+            ests = np.full( (len(self.camNum), self.count()), DEF_EMPTY_VAL ) #lleno de DEF_EMPTY_VAL
+            # Inicializar pesos por cámara y ubicación
+            pesos = np.ones( ests.shape ) #lleno de 1
+            pesosInit = np.zeros( (ests.shape[1]) )
+            # Evaluar estados de una misma camara
+            for c,k in enumerate(self.camNum):
+                if len(self.states[k]["stat"]) > 0:
+                    #TODO: comparar y filtrar solo fecha >= tout
+                    est = np.array(self.states[k]["stat"])
+                    # Vaciar listas
+                    self.states[k]["upd"].clear()
+                    self.states[k]["stat"].clear()
+                    # Promedio de cada ubicacion redondeando 0.5 hacia arriba
+                    promCam = (np.mean(est, axis=0) + 0.00001).round()
+                    # Cargar estado/peso por cada ubicacion de camara
+                    for ubi,prom,peso in zip(self.camNum[k],promCam,self.camWeight[k]):
+                        ests[c,ubi] = prom
+                        # inicializar columna de pesos en 0 (no puede hacerse antes x riesgo de división por 0)
+                        if not pesosInit[ubi]:
+                            pesos[:,ubi] = 0
+                            pesosInit[ubi] = 1
+                        pesos[c,ubi] = peso
+            # Evaluar estados de una misma ubicacion (promedio ponderado redondeando 0.5 hacia arriba)
+            currEval = (np.average(ests,axis=0,weights=pesos) + 0.00001).round().astype(int)
+            self.tlastEval = tCurrEval
+            # Convertir valor a texto/string, omitir ubicaciones no reconocidas
+            #estChar = np.array2string(currEval.astype(int),separator='')[1:-1].replace(str(DEF_EMPTY_VAL),DEF_IGNORE_CHAR)
+            estChar = np.char.replace(currEval.astype(int).astype(str),str(DEF_EMPTY_VAL),DEF_IGNORE_CHAR)
+            cambio = not np.array_equal(self.ocupyState, estChar)
+            self.ocupyState = estChar
+        return self.tlastEval, self.ocupyState, cambio
+            #r2 = (np.mean(r,axis=0) + 0.00001).round()
+            # >>> p
+            # array([[ 1, 10,  0],
+            #     [ 1,  1, 10],
+            #     [10,  1,  1]])
+            # >>> r
+            # array([[1, 0, 0],
+            #     [1, 1, 0],
+            #     [1, 1, 1]])
+            # >>> np.sum(p,axis=0)
+            # array([12, 12, 11])
+            # >>> p1=np.sum(p,axis=0)
+            # >>> np.divide(p,p1)
+            # array([[0.08333333, 0.83333333, 0.        ],
+            #     [0.08333333, 0.08333333, 0.90909091],
+            #     [0.83333333, 0.08333333, 0.09090909]])
+            # >>> np.average(r,axis=0,weights=p)
+            # >>> np.average(r,axis=0,weights=unos) = np.mean(r,axis=0)
+            # >>> (np.average(r,axis=0,weights=p) + 0.00001).round()

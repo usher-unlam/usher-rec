@@ -94,19 +94,21 @@ class Camaras():
             print('Error archivo sin permiso para leer:', file)
         return out
 
-    #    def addCam(self, c={}):
-    #        self.cams.append(c)
-
     def getUbicacionesFromCams(self):
         ubicaciones = {}
         minFr = {}
         camNum = {}
+        camWgt = {}
         coord = {}
         yxyx = {}
         for cam in self.cams:
             k = cam["nombre"]
-            minFr[k] = cam["minUbicacion"]
+            if "minUbicacion" in cam:
+                minFr[k] = cam["minUbicacion"]
+            else:
+                minFr[k] = []
             camNum[k] = []
+            camWgt[k] = []
             coord[k] = []
             yxyx[k] = []
             for ubi in cam["ubicaciones"]:
@@ -114,9 +116,16 @@ class Camaras():
                     ubicaciones[ubi["nro"]] = {}
                 ubicaciones[ubi["nro"]][k] = (cam, ubi["coord"],ubi["yxyx"])
                 camNum[k].append(ubi["nro"])
-                coord[k].append(ubi["coord"])
+                if "peso" in ubi:
+                    camWgt[k].append(ubi["peso"])
+                elif "peso" in cam:
+                    camWgt[k].append(cam["peso"])
+                else:
+                    camWgt[k].append(1)
+                if "coord" in ubi:
+                    coord[k].append(ubi["coord"])
                 yxyx[k].append(ubi["yxyx"])
-        return (ubicaciones, minFr, camNum, coord, yxyx)
+        return (ubicaciones, minFr, camNum, camWgt, coord, yxyx)
 
     def checkConn(self):
         #self.camstat = [(tstamp,estado)]
@@ -130,7 +139,7 @@ class Camaras():
                 if url.netloc != '':
                     out, msj = Camaras.urlTest(url.hostname,url.port)
                 else:
-                    out, msj = Camaras.fileTest(url.hostname,url.port)
+                    out, msj = Camaras.fileTest(url.path)
                 self.setCamStat(cam["nombre"], out, msj)
     
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):
