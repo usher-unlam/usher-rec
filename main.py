@@ -151,22 +151,32 @@ class CamServer():
                         i += 1
                         self.cams.escapeFrame()
                     else:
+                        
                         self.cams.captureFrame()
+                        
+
                         print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " camaras (",i,"descartados)")
                         i = 0 
                         if len(self.cams.frames) > 0:
                             if self.rn.canDetect():
                                 frame = list(self.cams.frames.values())[0]
                                 print("-> Procesando frame >",list(self.cams.frames)[0])
+                                
                                 rect = self.rn.detect(self.cams.frames, 
                                                     classFilterName=self.className, classFilterId=self.classId, 
                                                     scoreFilter=float(self.conf["ppersona"]))
+                                     
+
+                                              
                                 self.ubicaciones.addDetection(rect)
+                                
                                 # Evalúa ocupación cada X tiempo, analizando un grupo de detecciones
                                 tnewstate, newstate, isnew = self.ubicaciones.evaluateOcupy()
                                 if isnew:
                                     #graba nuevo estado en BBDD
+                                    print("Tiempo antes de writeOcupyState: ",time.now()) 
                                     self.source.writeOcupyState(tnewstate,newstate)
+                                    print("Tiempo despues de writeOcupyState: ",time.now())
                             else:
                                 print("Advertencia: RN ocupada (no detectará)")
                 # Si WORKING, solo comprueba estado al capturar, sino, siempre

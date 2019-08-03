@@ -275,6 +275,7 @@ class RN():
     ''' Obtiene dimensiones de rectángulo minimo dentro de una coleccion de rectángulos '''
     @staticmethod
     def minRect(rect):
+        rect=np.array(rect)
         print('-> Obteniendo rectángulo mínimo')
         # obtener tamaño de rectángulos
         dims = np.concatenate((
@@ -283,7 +284,7 @@ class RN():
                 ),axis=1).astype('int32')
         print("Dimensiones:",dims)
         # obtener dimensión mínima de rectángulo
-        mindim = np.amin(rect, axis=0).reshape(1,2)
+        mindim = np.amin(dims, axis=0).reshape(1,2)
         print("Dimensión mínima:", mindim)
         return mindim
 
@@ -303,14 +304,17 @@ class Ubicacion():
         # self.camYXYX = np.array(self.camYXYX)
         # Calcular cuadro mìnimo si no estuviera en BBDD
         # Calcular coordenadas si no estuvieran en BBDD
-        for cam,coord in self.camCoord.items():
+        print("camCoord Antes: ",self.camCoord)
+        for cam,num in self.camNum.items():
             if len(self.camMinFrame[cam]) == 0:
                 self.camMinFrame[cam] = RN.minRect(self.camYXYX[cam]) 
             self.states[cam] = {"upd": [], "stat": []}
-            if len(coord) == 0:
-                coord = RN.identify(self.camYXYX[cam], self.camMinFrame[cam])
+            if len(self.camCoord[cam]) == 0 or len(self.camCoord[cam][0])==0:
+                self.camCoord[cam] = RN.identify(self.camYXYX[cam], self.camMinFrame[cam])
+                
         self.tlastEval = time.now() # (solo evaluacion)
-
+        print("camCoord Despues: ",self.camCoord)
+        
     def count(self):
         return len(self.ocupyState)
 
@@ -326,8 +330,8 @@ class Ubicacion():
         # rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
         #for u,c in self.ubicacionesCam:
         #    cam = c[0]
-        print("ubiCoord:\n",self.camCoord['cam2'])
-        print("ubiYXYX:\n",self.camYXYX['cam2'])
+        print("ubiCoord:\n",self.camCoord['cam1'])
+        print("ubiYXYX:\n",self.camYXYX['cam1'])
         print("rect:\n",rect)
         update = time.now()
         for k,r in rect.items():
@@ -374,8 +378,8 @@ class Ubicacion():
         coordtype = [('y', int), ('x', int)]
         ordUbiC = np.sort(np.array(ubiC,dtype=coordtype),axis=0,order=['y','x'])
         ordC = np.sort(np.array(coord2,dtype=coordtype),axis=0,order=['y','x'])
-        ordUbiC = np.squeeze(rfn.structured_to_unstructured(ordUbiC[['x']]),axis=2)
-        ordC = np.squeeze(rfn.structured_to_unstructured(ordC[['x']]),axis=2)
+        ordUbiC = np.squeeze(rfn.structured_to_unstructured(ordUbiC[['x']]),axis=None)
+        ordC = np.squeeze(rfn.structured_to_unstructured(ordC[['x']]),axis=None)
         #print(ordUbiC)
         #ordUbiC = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
         #print(ordUbiC)

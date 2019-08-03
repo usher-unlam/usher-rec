@@ -170,7 +170,10 @@ class Camaras():
                     #crea captura si no había sido creado
                     if (not cam["nombre"] in self.caps 
                         or self.caps[cam["nombre"]] is None):
-                        self.caps[cam["nombre"]] = cv2.VideoCapture(cam["url"])
+                        capture = cv2.VideoCapture(cam["url"])
+                        capture.set(3,640)
+                        capture.set(4,480)
+                        self.caps[cam["nombre"]] = capture
 
                     if (self.caps[cam["nombre"]] 
                         and self.caps[cam["nombre"]].isOpened()):
@@ -252,7 +255,7 @@ class DBSource(DataSource):
                 self.conn = mysql.connector.connect(user=self.connData['user'], 
                                                     password=self.connData['passwd'],
                                                     host=self.connData['svr'],
-                                                    database=self.connData['db'], 
+                                                    database=self.connData['db'],
                                                     connection_timeout= self.tout['CONNECT'])
         ##TODO: capturar errores SQL
                 if self.conn and self.conn.is_connected():
@@ -420,6 +423,7 @@ class DBSource(DataSource):
                                                 VALUES (%s, 255, %s, %s)
                                                 ON DUPLICATE KEY UPDATE tstamp=VALUES(tstamp), estadoUbicaciones=VALUES(estadoUbicaciones)""", 
                                                 (tnewState, newState, self.camsvr.nombre))
+                    print("ESTADO UBICACIONES: ",newState)
                     # script = self.cursor.execute("""UPDATE estado SET tstamp=%s, estadoUbicaciones=%s 
                     #                             WHERE camserver = %s""", 
                     #                             (tnewState, newState, self.camsvr.nombre))
