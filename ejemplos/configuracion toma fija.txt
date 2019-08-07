@@ -1,0 +1,4 @@
+1)Disponer Camara y Toma a analizar de manera fija
+2)Capturar imagen de la toma
+3)Utilizar LabelImage windows_v1.8.0 para generar el locations.xml con las
+ubicaciones fijas, guardar el xml en la carpeta configuracion
