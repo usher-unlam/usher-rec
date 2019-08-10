@@ -1,7 +1,0 @@
-1)Instalar wxPython: pip install wxpython
-(Para consultar version instalada: pip show WxPython)
-Version instalada: 4.0.6
-
-
-2)(Opcional) Para diseñar layout del formulario:
-Descargar wxGlade Version 0.9.3: https://sourceforge.net/projects/wxglade/
