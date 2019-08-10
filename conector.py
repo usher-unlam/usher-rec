@@ -252,14 +252,16 @@ class DBSource(DataSource):
         if self.conn is None or not self.conn.is_connected():
             self.cursor = None
             try:
+                
                 self.conn = mysql.connector.connect(user=self.connData['user'], 
                                                     password=self.connData['passwd'],
                                                     host=self.connData['svr'],
                                                     database=self.connData['db'],
                                                     connection_timeout= self.tout['CONNECT'])
+               
         ##TODO: capturar errores SQL
                 if self.conn and self.conn.is_connected():
-                    self.conn.config(connection_timeout=30)
+                    self.conn.config(connection_timeout=3)
                     self.cursor = self.conn.cursor()
                     if self.cursor:
                         return True
@@ -291,6 +293,7 @@ class DBSource(DataSource):
                     if not reg is None and reg[0] > 0:
                         newVal = True
                         status = Status(reg[0])
+                    print("")    
                     print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
                 except mysql.connector.Error as error:
                     print("Lee BBDD status","Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
@@ -423,18 +426,22 @@ class DBSource(DataSource):
                                                 VALUES (%s, 255, %s, %s)
                                                 ON DUPLICATE KEY UPDATE tstamp=VALUES(tstamp), estadoUbicaciones=VALUES(estadoUbicaciones)""", 
                                                 (tnewState, newState, self.camsvr.nombre))
-                    print("ESTADO UBICACIONES: ",newState)
+                     
+                    #print("ESTADO UBICACIONES: ",newState)
                     # script = self.cursor.execute("""UPDATE estado SET tstamp=%s, estadoUbicaciones=%s 
                     #                             WHERE camserver = %s""", 
                     #                             (tnewState, newState, self.camsvr.nombre))
             ##TODO: capturar errores SQL
                     self.conn.commit()
+                    print("DATOS GRABADOS: ",tnewState, '{:7.7}'.format(newState) )  
                 except mysql.connector.Error as error:
                     print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
                 except BaseException as e:
                     print(time.now(), "Error desconocido grabando estado: ", e)
                 finally:
                     pass
+  
+
        
     def close(self):
         if self.conn and self.conn.is_connected():

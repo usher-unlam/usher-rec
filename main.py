@@ -14,7 +14,7 @@ from textwrap import wrap
 
 class CamServer():
     def __init__(self, nombre="", dbConfig={}):
-        self.MAX_ESCAPE_FRAMES = 100
+        self.MAX_ESCAPE_FRAMES = 600
         self.DEF_IGNORE_CHAR = '_'
         self.conf = {"ubicaciones": 92, "frecCNN": 20, "fpsCam": 40, "fpsCNN": 4, 
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
@@ -154,7 +154,8 @@ class CamServer():
                         
                         self.cams.captureFrame()
                         
-
+                        print("")   
+                        print("------------ NUEVO CICLO ----------------") 
                         print("Frames capturados:",len(self.cams.frames),"de",len(self.cams.cams), " camaras (",i,"descartados)")
                         i = 0 
                         if len(self.cams.frames) > 0:
@@ -166,17 +167,17 @@ class CamServer():
                                                     classFilterName=self.className, classFilterId=self.classId, 
                                                     scoreFilter=float(self.conf["ppersona"]))
                                      
-
-                                              
+                                                        
                                 self.ubicaciones.addDetection(rect)
                                 
                                 # Evalúa ocupación cada X tiempo, analizando un grupo de detecciones
                                 tnewstate, newstate, isnew = self.ubicaciones.evaluateOcupy()
                                 if isnew:
                                     #graba nuevo estado en BBDD
-                                    print("Tiempo antes de writeOcupyState: ",time.now()) 
+                                    print("")
+                                    print("GRABANDO EN BDD...")
                                     self.source.writeOcupyState(tnewstate,newstate)
-                                    print("Tiempo despues de writeOcupyState: ",time.now())
+                                 
                             else:
                                 print("Advertencia: RN ocupada (no detectará)")
                 # Si WORKING, solo comprueba estado al capturar, sino, siempre
