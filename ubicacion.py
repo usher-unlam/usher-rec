@@ -112,7 +112,7 @@ class RN():
                 # for index, value in enumerate(self.classes[k][0]):
                 #     if self.scores[k][0,index] > scoreFilter:
                 #         if self.category_index.get(value).get('name') == classFilter:
-                            print("Class Value for ",classFilterName,":", classFilterId, box[index])
+                            #print("Class Value for ",classFilterName,":", classFilterId, box[index])
                             # ymin = (int(box[index,0] * height))
                             # xmin = (int(box[index,1] * width))
                             # ymax = (int(box[index,2] * height))
@@ -330,9 +330,9 @@ class Ubicacion():
         # rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
         #for u,c in self.ubicacionesCam:
         #    cam = c[0]
-        print("ubiCoord:\n",self.camCoord['cam1'])
-        print("ubiYXYX:\n",self.camYXYX['cam1'])
-        print("rect:\n",rect)
+        # print("ubiCoord:\n",self.camCoord['cam1'])
+        # print("ubiYXYX:\n",self.camYXYX['cam1'])
+        # print("rect:\n",rect)
         update = time.now()
         for k,r in rect.items():
             #recorro camaras y sus rectángulos reconocidos
@@ -354,45 +354,54 @@ class Ubicacion():
                 self.states[k]["upd"].append(update)
                 self.states[k]["stat"].append(est)
 
+
     def __evaluateOcupy(self, ubiN, ubiR, ubiC, ubiMin, rect1):
-        coord1 = RN.identify(rect1, ubiMin)
+        # coord1 = RN.identify(rect1, ubiMin)
         #calcular iou y overlap con YXYX de ubicaciones de la cámara
-        over1 = RN.compute_overlaps(rect1,ubiR)
-        print('Solapamiento YXYX:\n', over1)
+        # over1 = RN.compute_overlaps(rect1,ubiR)
+        # print('Solapamiento YXYX:\n', over1)
         #Calcular intersección con YXYX de ubicaciones de la cámara
         inter1 = RN.compute_intersection(rect1,ubiR)
-        print('Intersección YXYX:\n', inter1)
+        #print('Intersección YXYX:\n', inter1)
 
-        ##fusionar rectangulos con coord duplicadas
-        rect2,coord2 = RN.fusionDuplicatedId(rect1,coord1)
-        #calcular iou y overlap con YXYX de ubicaciones de la cámara
-        over2 = RN.compute_overlaps(rect2,ubiR)
-        print('Solapamiento YXYX:\n', over2)
-        #Calcular intersección con YXYX de ubicaciones de la cámara
-        inter2 = RN.compute_intersection(rect2,ubiR)
-        print('Intersección YXYX:\n', inter2)
+        # ##fusionar rectangulos con coord duplicadas
+        # rect2,coord2 = RN.fusionDuplicatedId(rect1,coord1)
+        # #calcular iou y overlap con YXYX de ubicaciones de la cámara
+        # over2 = RN.compute_overlaps(rect2,ubiR)
+        # print('Solapamiento YXYX:\n', over2)
+        # #Calcular intersección con YXYX de ubicaciones de la cámara
+        # inter2 = RN.compute_intersection(rect2,ubiR)
+        # print('Intersección YXYX:\n', inter2)
         
         # Definir ocupación de ubicación (ocupado/libre)
         est = np.zeros( (ubiR.shape[0],) )
-        # Ordenar coordenadas
-        coordtype = [('y', int), ('x', int)]
-        ordUbiC = np.sort(np.array(ubiC,dtype=coordtype),axis=0,order=['y','x'])
-        ordC = np.sort(np.array(coord2,dtype=coordtype),axis=0,order=['y','x'])
-        ordUbiC = np.squeeze(rfn.structured_to_unstructured(ordUbiC[['x']]),axis=None)
-        ordC = np.squeeze(rfn.structured_to_unstructured(ordC[['x']]),axis=None)
-        #print(ordUbiC)
-        #ordUbiC = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
-        #print(ordUbiC)
-        j = 0
-        for i,c in enumerate(ordUbiC):
-            while j<len(ordC) and bool(np.greater(c,ordC[j]).sum()):
+        # Reconocimiento usando INTERSECCION
+        for b in range(ubiR.shape[0]):
+            j = 0
+            while j<len(rect1) and inter1[j][b] < 0.5:
                 j += 1
-            if j == len(ordC):
-                break
-            if np.array_equal(c, ordC[j]):
-                print(c, "vs", ordC[j])
-                est[i] = 1
-                j += 1
+            if j<len(rect1):
+                est[b] = 1
+            
+        # # Ordenar coordenadas
+        # coordtype = [('y', int), ('x', int)]
+        # ordUbiC = np.sort(np.array(ubiC,dtype=coordtype),axis=0,order=['y','x'])
+        # ordC = np.sort(np.array(coord1,dtype=coordtype),axis=0,order=['y','x'])
+        # ordUbiC = np.squeeze(rfn.structured_to_unstructured(ordUbiC[['x']]),axis=None)
+        # ordC = np.squeeze(rfn.structured_to_unstructured(ordC[['x']]),axis=None)
+        # #print(ordUbiC)
+        # #ordUbiC = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
+        # #print(ordUbiC)
+        # j = 0
+        # for i,c in enumerate(ordUbiC):
+        #     while j<len(ordC) and bool(np.greater(c,ordC[j]).sum()):
+        #         j += 1
+        #     if j == len(ordC):
+        #         break
+        #     if np.array_equal(c, ordC[j]):
+        #         print(c, "vs", ordC[j])
+        #         est[i] = 1
+        #         j += 1
         return est
 
     # Devuelve la fecha/hora, el estado nuevo calculado, un bool indicando si cambió respecto al estado anterior
@@ -401,6 +410,7 @@ class Ubicacion():
         tCurrEval = time.now()
         tout = tCurrEval - delta(milliseconds=self.EVAL_LASTMILLIS)
         cambio = False
+
         if tout > self.tlastEval:
             evaluo = False
             ests = np.full( (len(self.camNum), self.count()), DEF_EMPTY_VAL ) #lleno de DEF_EMPTY_VAL
@@ -433,9 +443,12 @@ class Ubicacion():
                 # Convertir valor a texto/string, omitir ubicaciones no reconocidas
                 #estChar = np.array2string(currEval.astype(int),separator='')[1:-1].replace(str(DEF_EMPTY_VAL),self.DEF_IGNORE_CHAR)
                 estChar = np.char.replace(currEval.astype(int).astype(str),str(DEF_EMPTY_VAL),self.DEF_IGNORE_CHAR)
-            # Establece 'cambio' solo si difiere de estado anterior
-            # En este caso no se actualizaría el tstamp de 'estado' sino solo el 'update' del servidor
-            #cambio = not np.array_equal(self.ocupyState, estChar) 
+                ## Establece 'cambio' solo si difiere de estado anterior
+                ## En este caso no se actualizaría el tstamp de 'estado' sino solo el 'update' del servidor
+                #cambio = not np.array_equal(self.ocupyState, estChar) 
+            else:
+                # Si no se detecta algo válido, cambiar las bancas previamente ocupadas como libres
+                estChar = np.char.replace(self.ocupyState,'1',self.DEF_IGNORE_CHAR)
             cambio = True
             self.ocupyState = estChar.tolist()
         return self.tlastEval, self.ocupyState, cambio
