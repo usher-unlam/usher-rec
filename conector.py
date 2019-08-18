@@ -134,7 +134,7 @@ class Camaras():
         for cam in self.cams:
             if (not cam["nombre"] in self.camstat 
                 or self.camstat[cam["nombre"]][0] < tlimit):
-    ##TODO: Chequear si no es url (ej: 0 o "file.mp4")
+        ##TODO: Chequear si no es url (ej: 0 o "file.mp4")
                 url = urlparse(cam["url"])
                 if url.netloc != '':
                     out, msj = Camaras.urlTest(url.hostname,url.port)
@@ -145,11 +145,14 @@ class Camaras():
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):
         self.camstat[cam] = (time.now(), estado, msj)
         #self.caps[cam] = None
-    ##TODO: guardar estado en base de datos
+        ##TODO: guardar estado en base de datos
         # es necesario eliminar caps ante cualquier error/falla
         if (estado != CamStatus.OK):
+            if ((not self.caps[cam] is None) and self.caps[cam].isOpened()):
+                # libera conexión con origen stream
+                self.caps[cam].release()
             self.caps[cam] = None
-    ##TODO: Loguear conexión fallida
+        ##TODO: Loguear conexión fallida
     
     def escapeFrame(self):
         return self.captureFrame(False)
@@ -171,8 +174,10 @@ class Camaras():
                     if (not cam["nombre"] in self.caps 
                         or self.caps[cam["nombre"]] is None):
                         capture = cv2.VideoCapture(cam["url"])
-                        capture.set(3,640)
-                        capture.set(4,480)
+                        # Prueba de limitar tamano de frame
+                        capture.set(cv2.CAP_PROP_FRAME_WIDTH,640) #3
+                        capture.set(cv2.CAP_PROP_FRAME_HEIGHT,480) #4
+                        capture.set(cv2.CAP_PROP_FPS,30) # FPS esperados
                         self.caps[cam["nombre"]] = capture
 
                     if (self.caps[cam["nombre"]] 
@@ -365,10 +370,16 @@ class DBSource(DataSource):
           {'nro': 1, 'coord': [X1, Y1], 'size'}, 
           {'nro': 2, 'coord': [X2, Y2]}, 
         ]}] '''
-    def readCamInfo(self):
+    def readCamInfo(self, cameras):
         if self.connect():
             try:
-                self.cursor.execute("SELECT config FROM camara WHERE activa = true")
+                query = "SELECT config FROM camara WHERE activa = true"
+                if len(cameras) > 0:
+                    cameras_list = ','.join(['%s'] * len(cameras))
+                    query += " AND nombre in (%s)" % cameras_list
+                    self.cursor.execute(query, tuple(cameras))
+                else:
+                    self.cursor.execute(query)
                 reg = self.cursor.fetchall()
                 cams = list()
                 if not reg is None:

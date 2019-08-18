@@ -20,7 +20,8 @@ class CamServer():
                     "pbanca": 0.3, "ppersona": 0.5, "pinterseccion": 0.7, "psolapamiento": 0.5, 
                     "CONN_TIMEOUT": 0.6, "CONN_CHECK_TIMEOUT": 5 , 
                     "DB_TIMEOUT" : { "CONNECT": 3, "STATUS_READ": 4000, "STATUS_WRITE": 1000 },
-                    "EVAL_LAST_MILLIS": 1500} 
+                    "EVAL_LAST_MILLIS": 1500, "CAMERAS": []
+                    } 
         
             # frecCNN   Cantidad de frames capturados sin procesar por CNN (para evitar lag)
             # fpsCam    FPS capturados de cámaras
@@ -77,7 +78,7 @@ class CamServer():
     ##TODO: chequear newStatus no es asignado
     ##TODO: chequear configuración cargada correctamente
         #obtiene configuración de cámaras (ip/url,ubicaciones)
-        c = self.source.readCamInfo() ##debería indicar cams a buscar
+        c = self.source.readCamInfo(self.conf["CAMERAS"]) ##debería indicar cams a buscar
         #obtiene estado de ubicaciones (útil al recuperar post falla)
         b = self.source.readOcupyState()
         # Estado por defecto cuando no hay registro previo en BBDD
