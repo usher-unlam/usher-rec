@@ -30,6 +30,7 @@ class CamStatus(IntEnum):
     ERR_NOFILE = 10
     ERR_NOACCS = 11
 
+
 ''' 'nombre': 'cam1', 'minUbicacion': [ANCHOpx, ALTOpx], 
         'ip': '192.168.0.10', 'desc': 'camara del techo', 
         'ubicaciones': [
@@ -54,6 +55,18 @@ class Camaras():
         self.tlastTime = time.now() # (captura o escape)
         self.tlastCapt = time.now() # (solo captura)
     
+    def getStatus(self, cam=None):
+        stat2 = self.camstat.copy()
+        stat = {}
+        for c,v in stat2.items():
+            stat[c] = { "update": v[0],
+                "status": int(v[1]),
+                "statdesc": CamStatus(v[1]).name,
+                "statmsj": v[2] } #(time.now(), estado, msj)
+        if cam is None:
+            return stat
+        return {} if not cam in stat else stat[cam]
+
     def getLastTime(self):
         return self.tlastTime
 
@@ -148,7 +161,8 @@ class Camaras():
         ##TODO: guardar estado en base de datos
         # es necesario eliminar caps ante cualquier error/falla
         if (estado != CamStatus.OK):
-            if ((not self.caps[cam] is None) and self.caps[cam].isOpened()):
+            if (cam in self.caps and (not self.caps[cam] is None) 
+                and self.caps[cam].isOpened()):
                 # libera conexión con origen stream
                 self.caps[cam].release()
             self.caps[cam] = None

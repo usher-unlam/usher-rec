@@ -23,7 +23,7 @@ class RN():
         self.boxes = []; self.scores = []; self.classes = []; self.num = []
         
         self.working = threading.Lock()
-        self.init = threading.Thread(target=self.initialize) #, args=(index,)
+        self.init = threading.Thread(target=self.initialize,name="RNThread") #, args=(index,)
         self.init.start()
 
     # Proceso extenso paralelizado con thread (demora ~33 segundos)

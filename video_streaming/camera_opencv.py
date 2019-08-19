@@ -1,6 +1,6 @@
 import os
 import cv2
-from base_camera import BaseCamera
+from .base_camera import BaseCamera
 
 
 class Camera(BaseCamera):
@@ -45,7 +45,9 @@ class Camera(BaseCamera):
             if img is None:
                 # show error image
                 img = Camera.error_img
-                if not (Camera.stream is None
+
+                # release conection to camera
+                if ((not Camera.stream is None)
                     and Camera.stream.isOpened()):
                     Camera.stream.release()
             

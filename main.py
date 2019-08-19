@@ -6,9 +6,10 @@ import cv2.cv2 as cv2
 
 import ubicacion as ubi
 import conector as cn
+from stream import CamStream
 
-from datetime import datetime as time
-from datetime import timedelta as delta
+import time as t
+from datetime import datetime as time, timedelta as delta
 
 from textwrap import wrap
 
@@ -35,8 +36,9 @@ class CamServer():
         #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
         self.rn = None
-
         self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
+        # Inicializado servidor de stream (webserver)
+        self.stream = None
         
         # Establecer conexion con BBDD
         self.source = cn.DBSource(dbConfig,self.conf["DB_TIMEOUT"],self)
@@ -45,7 +47,6 @@ class CamServer():
             print("Error de conexion a BBDD. Compruebe los datos de conexion.")
             exit(1)
         else:
-        ##TODO: chequear conexion correcta con BBDD
             # Procesa setup obteniendo ultimo estado (recuperación post falla)
             currStatus = self.setup()
             # Define estado a procesar segun estado previo (Status.SUSPENDING por defecto) 
@@ -53,6 +54,15 @@ class CamServer():
             print("BD", currStatus, "=> procesar", newStatus)
             # Definir nuevo estado y guardar en BBDD
             self.processNewState(newStatus) 
+
+    def getStatus(self):
+        stat = self.status
+        now = time.now()
+        stat = { "name": self.nombre, 
+                "update": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "status": int(stat),
+                "statdesc": stat.name }
+        return stat
         
     def setup(self):
         print("Configurando servidor",self.nombre)
@@ -89,6 +99,21 @@ class CamServer():
         #comprobar conexión de cámaras por primera vez
         self.cams.checkConn()
         self.ubicaciones = ubi.Ubicacion(b,self.cams,self.conf["EVAL_LAST_MILLIS"],self.DEF_IGNORE_CHAR)
+
+        #iniciar servidor de stream (webserver)
+        if self.stream is None:
+            self.stream = CamStream()
+        # Configurar servidor de stream e iniciar (no afecta si ya se esta ejecutando)
+        self.stream.setup(self, self.cams)
+        # Inicia servidor de stream 
+        # self.stream.startStream() #no es necesario
+        # t.sleep(15)
+        # # Detener thread de stream (Prueba)
+        # self.stream.stopStream()
+        # # self.stream.startStream() #no es necesario
+        # t.sleep(15)
+        # # Detener thread de stream (Prueba)
+        # self.stream.startStream()
 
         return newStatus
         
@@ -151,6 +176,8 @@ class CamServer():
                             #tout2 = time.now() - delta(milliseconds=1000/self.conf["fpsCNN"])
                         i += 1
                         self.cams.escapeFrame()
+                        # permitir a otro thread trabajar
+                        t.sleep(0)
                     else:
                         
                         self.cams.captureFrame()
@@ -206,6 +233,7 @@ class CamServer():
 if __name__ == "__main__":
     ##TODO: recibir lo siguiente como parámetros de entrada
     serverName = "SVR1"
+    #serverName = "TEST"
     dbConfig = {'user':"usher",
                 'passwd':"usher101",
                 'svr': "usher.sytes.net",
