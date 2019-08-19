@@ -63,7 +63,7 @@ class Camaras():
                 "status": int(v[1]),
                 "statdesc": CamStatus(v[1]).name,
                 "statmsj": v[2] } #(time.now(), estado, msj)
-        if cam is None:
+        if cam is None or cam == "":
             return stat
         return {} if not cam in stat else stat[cam]
 
@@ -72,6 +72,13 @@ class Camaras():
 
     def getLastCapture(self):
         return self.tlastCapt
+
+    def getLastFrame(self,cam=None):
+        if cam is None or cam == "":
+            return self.frames.copy()
+        if cam in self.frames: 
+            return self.frames[cam].copy()
+        return None
 
     @staticmethod
     def urlTest(host, port):

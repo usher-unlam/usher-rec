@@ -233,7 +233,7 @@ class CamServer():
 if __name__ == "__main__":
     ##TODO: recibir lo siguiente como parámetros de entrada
     serverName = "SVR1"
-    #serverName = "TEST"
+    serverName = "TEST"
     dbConfig = {'user':"usher",
                 'passwd':"usher101",
                 'svr': "usher.sytes.net",

@@ -1,6 +1,7 @@
 #https://gist.github.com/keithweaver/5bd13f27e2cc4c4b32f9c618fe0a7ee5
 
 import numpy as np
+import time
 import datetime
 from threading import Thread
 from werkzeug.serving import make_server
@@ -8,6 +9,8 @@ from object_detection.utils import visualization_utils as vis_util
 from flask import Flask, render_template, Response
 from video_streaming.camera_opencv import Camera
 
+import cv2.cv2 as cv2
+import copy
 import json
 from flask import jsonify
 from conector import Status, CamStatus
@@ -59,6 +62,7 @@ class CamStream():
     app = Flask("CamStream")
     camserver = None
     cams = None
+    lastStCam = ""
 
     @staticmethod
     def mycast(o):
@@ -70,15 +74,30 @@ class CamStream():
     @staticmethod
     @app.route('/')
     def index():
-        """Video streaming home page."""
+        """Root home page."""
         try:
             html = render_template('index.html')
         except:
             html = ('<html><head></head><body><ul>'
                 +'<li><a href="/camserver">Estado de Servidor CamServer</a></li>'
                 +'<li><a href="/cameras">Estado de Camaras</a></li>'
+                +'<li><a href="/live">Ver video en vivo</a></li>'
                 +'</ul></body></html>')
         return html
+
+    @staticmethod
+    @app.route('/live')
+    def live():
+        """Live Video streaming home page."""
+        try:
+            html = render_template('live.html')
+        except:
+            html = ('<html><head></head><body><ul>'
+                +'<li><a href="/camserver">Estado de Servidor CamServer</a></li>'
+                +'<li><a href="/cameras">Estado de Camaras</a></li>'
+                +'</ul><h4>ERROR MOSTRANDO VIDEO EN VIVO</h4></body></html>')
+        return html
+        #return jsonify(CamStream.camserver.getStatus())
 
     @staticmethod
     @app.route('/camserver')
@@ -99,6 +118,56 @@ class CamStream():
                         status=200,
                         mimetype="application/json")
         #return jsonify(CamStream.cams.getStatus())
+
+    @staticmethod
+    def gen(cam):
+        """Video streaming generator function."""
+        #fr=0
+        repeatLast = 0
+        lastimg = Camera.error_img
+        img = None
+        while True:
+            if not cam == "":
+                img = CamStream.cams.getLastFrame(cam)
+            if img is None:
+                if repeatLast > 10:
+                    img = Camera.error_img
+                else:
+                    repeatLast += 1
+                    img = lastimg
+            else:
+                repeatLast = 0
+                lastimg = img
+            #print("Frame",fr)
+            #frame = camera.get_frame()
+            frame = cv2.imencode('.jpg', img)[1].tobytes()
+            yield (b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            time.sleep(0)
+            #time.sleep(0.001)
+            #fr+=1
+
+    @staticmethod
+    @app.route('/video_feed')
+    @app.route('/video_feed/<cam>')
+    def video_feed(cam="!LAST!"):
+        """Video streaming route. Put this in the src attribute of an img tag."""
+        if cam == "!LAST!":
+            camstat = CamStream.cams.camstat.copy()
+            if (CamStream.lastStCam == "" or CamStream.lastStCam not in camstat):
+                cam = ""
+                # Buscar primer camara con estado OK
+                for c,st in camstat.items():
+                    if st[1] is CamStatus.OK:
+                        CamStream.lastStCam = c
+                        break
+            cam = CamStream.lastStCam
+        if cam == "":
+            return Response(None,
+                            400)
+        #return "./" + cam + "/." + jsonify(stCam) 
+        return Response(CamStream.gen(cam), mimetype='multipart/x-mixed-replace; boundary=frame')
+        #return Response(img, mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
     def __init__(self):

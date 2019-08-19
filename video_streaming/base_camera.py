@@ -57,7 +57,12 @@ class BaseCamera(object):
     frame = None  # current frame is stored here by background thread
     last_access = 0  # time of last client access to the camera
     event = CameraEvent()
-    error_img = None # image to show when everything fails
+    
+    try:
+        error_img = open('error.jpg', 'rb').read()
+    except:
+        error_img = np.zeros((480,640,3), np.uint8)
+    #error_img = None # image to show when everything fails
 
     def __init__(self):
         """Start the background camera thread if it isn't running yet."""
