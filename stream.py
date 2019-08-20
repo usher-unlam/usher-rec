@@ -36,7 +36,7 @@ class ServerThread(Thread):
         else:
             self.app = app
         #self.app.name = appName
-        self.srv = make_server('0.0.0.0',  port, self.app)
+        self.srv = make_server('0.0.0.0',  port, self.app, threaded=True)
         self.ctx = self.app.app_context()
         self.ctx.push()
 
