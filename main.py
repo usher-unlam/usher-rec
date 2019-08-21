@@ -188,8 +188,8 @@ class CamServer():
                         i = 0 
                         if len(self.cams.frames) > 0:
                             if self.rn.canDetect():
-                                frame = list(self.cams.frames.values())[0]
-                                print("-> Procesando frame >",list(self.cams.frames)[0])
+                                ##frame = list(self.cams.frames.values())[0]
+                                #print("-> Procesando frame >",list(self.cams.frames)[0])
                                 
                                 rect = self.rn.detect(self.cams.frames, 
                                                     classFilterName=self.className, classFilterId=self.classId, 
@@ -203,7 +203,7 @@ class CamServer():
                                 if isnew:
                                     #graba nuevo estado en BBDD
                                     print("")
-                                    print("GRABANDO EN BDD...")
+                                    print("GRABANDO EN BDD...",end="")
                                     self.source.writeOcupyState(tnewstate,newstate)
                                  
                             else:

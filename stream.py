@@ -123,6 +123,7 @@ class CamStream():
     def gen(cam):
         """Video streaming generator function."""
         #fr=0
+        FRM_REPEAT_BEFORE_ERROR = 10
         repeatLast = 0
         lastimg = Camera.error_img
         img = None
@@ -130,7 +131,7 @@ class CamStream():
             if not cam == "":
                 img = CamStream.cams.getLastFrame(cam)
             if img is None:
-                if repeatLast > 10:
+                if repeatLast > FRM_REPEAT_BEFORE_ERROR:
                     img = Camera.error_img
                 else:
                     repeatLast += 1

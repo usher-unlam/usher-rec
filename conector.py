@@ -176,10 +176,12 @@ class Camaras():
         ##TODO: Loguear conexión fallida
     
     def escapeFrame(self):
-        return self.captureFrame(False)
+        return self.captureFrame(True)
 
-    def captureFrame(self, saveTime=True):
+    def captureFrame(self, escapeFrame=False):
         #self.caps = []
+        # Guardar tlastTime si NO se escapa el frame
+        saveTime = not escapeFrame
         self.frames = {}
         self.tlastTime = time.now()
         if saveTime:
@@ -203,11 +205,18 @@ class Camaras():
 
                     if (self.caps[cam["nombre"]] 
                         and self.caps[cam["nombre"]].isOpened()):
-                        ret, image_np = self.caps[cam["nombre"]].read()
+                        ###ret, image_np = self.caps[cam["nombre"]].read()
+                        #solicitar frame
+                        ret = self.caps[cam["nombre"]].grab()
                         if ret:
-                            self.frames[cam["nombre"]] = image_np
                             #renovar estado OK de cámara
                             self.setCamStat(cam["nombre"], CamStatus.OK, "frame")
+                            # se puede evitar traer frame si no se hace stream de la camara
+                            if True or not escapeFrame:
+                                #obtener/recuperar frame solicitado
+                                ret, image_np = self.caps[cam["nombre"]].retrieve()
+                                if ret:
+                                    self.frames[cam["nombre"]] = image_np
                         else:
                             err = "No se recibió frame: " + cam["nombre"]
                             self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
