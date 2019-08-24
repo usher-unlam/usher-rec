@@ -15,17 +15,128 @@ import json
 from flask import jsonify
 from conector import Status, CamStatus
 
+import collections
+
+def drawBoxesLabels(
+    image,
+    boxes,
+    labels,
+    thickness=4,
+    color='black',
+    mask_alpha=0,
+    skip_labels=False):
+  """Overlay labeled boxes on an image with formatted scores and label names.
+  This function groups boxes that correspond to the same location
+  and creates a display string for each detection and overlays these
+  on the image. Note that this function modifies the image in place, and returns
+  that same image.
+  Args:
+    image: uint8 numpy array with shape (img_height, img_width, 3)
+    boxes: a numpy array of shape [N, 4]
+    classes: a numpy array of shape [N]. Note that class indices are 1-based,
+      and match the keys in the label map.
+    scores: a numpy array of shape [N] or None.  If scores=None, then
+      this function assumes that the boxes to be plotted are groundtruth
+      boxes and plot all boxes as black with no classes or scores.
+    category_index: a dict containing category dictionaries (each holding
+      category index `id` and category name `name`) keyed by category indices.
+    instance_masks: a numpy array of shape [N, image_height, image_width] with
+      values ranging between 0 and 1, can be None.
+    instance_boundaries: a numpy array of shape [N, image_height, image_width]
+      with values ranging between 0 and 1, can be None.
+    keypoints: a numpy array of shape [N, num_keypoints, 2], can
+      be None
+    track_ids: a numpy array of shape [N] with unique track ids. If provided,
+      color-coding of boxes will be determined by these ids, and not the class
+      indices.
+    use_normalized_coordinates: whether boxes is to be interpreted as
+      normalized coordinates or not.
+    max_boxes_to_draw: maximum number of boxes to visualize.  If None, draw
+      all boxes.
+    min_score_thresh: minimum score threshold for a box to be visualized
+    agnostic_mode: boolean (default: False) controlling whether to evaluate in
+      class-agnostic mode or not.  This mode will display scores but ignore
+      classes.
+    line_thickness: integer (default: 4) controlling line width of the boxes.
+    groundtruth_box_visualization_color: box color for visualizing groundtruth
+      boxes
+    skip_scores: whether to skip score when drawing a single detection
+    skip_labels: whether to skip label when drawing a single detection
+    skip_track_ids: whether to skip track id when drawing a single detection
+  Returns:
+    uint8 numpy array with shape (img_height, img_width, 3) with overlaid boxes.
+  """
+  # Create a display string (and color) for every box location, group any boxes
+  # that correspond to the same location.
+  box_to_display_str_map = collections.defaultdict(list)
+  box_to_color_map = collections.defaultdict(str)
+  box_to_instance_masks_map = {}
+  use_normalized_coordinates = False
+  max_boxes_to_draw = boxes.shape[0]
+  for i in range(min(max_boxes_to_draw, boxes.shape[0])):
+    box = tuple(boxes[i].tolist())
+    if True:
+      if True:
+        display_str = ''
+        if not skip_labels:
+          if True:
+            label = ' '.join(labels[i])
+            display_str = str(label)
+        # if not skip_scores:
+        #   if not display_str:
+        #     display_str = '{}%'.format(int(100*scores[i]))
+        #   else:
+        #     display_str = '{}: {}%'.format(display_str, int(100*scores[i]))
+        # if not skip_track_ids and track_ids is not None:
+        #   if not display_str:
+        #     display_str = 'ID {}'.format(track_ids[i])
+        #   else:
+        #     display_str = '{}: ID {}'.format(display_str, track_ids[i])
+        box_to_display_str_map[box].append(display_str)
+        # if track_ids is not None:
+        #   prime_multipler = _get_multiplier_for_color_randomness()
+        #   box_to_color_map[box] = STANDARD_COLORS[
+        #       (prime_multipler * track_ids[i]) % len(STANDARD_COLORS)]
+        # else:
+        #   box_to_color_map[box] = STANDARD_COLORS[
+        #       classes[i] % len(STANDARD_COLORS)]
+        box_to_color_map[box] = color
+
+  # Draw all boxes onto image.
+  for box, color in box_to_color_map.items():
+    ymin, xmin, ymax, xmax = box
+    if mask_alpha > 0:
+      vis_util.draw_mask_on_image_array(
+          image,
+          box_to_instance_masks_map[box],
+          color=color,
+          alpha=mask_alpha
+      )
+    vis_util.draw_bounding_box_on_image_array(
+        image,
+        ymin,
+        xmin,
+        ymax,
+        xmax,
+        color=color,
+        thickness=thickness,
+        display_str_list=box_to_display_str_map[box],
+        use_normalized_coordinates=use_normalized_coordinates)
+    # if keypoints is not None:
+    #   draw_keypoints_on_image_array(
+    #       image,
+    #       box_to_keypoints_map[box],
+    #       color=color,
+    #       radius=line_thickness / 2,
+    #       use_normalized_coordinates=use_normalized_coordinates)
+  return image
+
+
 #Declaracion de variable global
 webserver = None
 
-class defApp:
-    def __init__(self,args):
-        pass
-    def route(self,args):
-        pass
 
 class ServerThread(Thread):
-    app = defApp("App")
     port = 5000
 
     def __init__(self, port=5000, app=None):
@@ -62,7 +173,80 @@ class CamStream():
     app = Flask("CamStream")
     camserver = None
     cams = None
+    ubis = None
     lastStCam = ""
+
+    def __init__(self):
+        self.cams = None
+        self.camserver = None
+        self.stream = {}
+    
+    def setup(self, camserver):
+        CamStream.camserver = camserver
+        CamStream.cams = camserver.cams
+        CamStream.ubis = camserver.ubicaciones
+       # if CamStream.cams is None:
+       #     # Detener stream
+       #     self.stopStream()
+       # else:
+        self.startStream()
+    
+    # Inicia webserver para streaming
+    def startStream(self):
+        print('Start streaming')
+        self.__start_server(__class__)
+        print('HTTP server started')
+
+    # Detiene webserver 
+    def stopStream(self):
+        print('Stop streaming')
+        self.__stop_server()
+        pass
+
+    # Genera una imagen a partir de frame + boxes|diseño + texto|diseño
+    @staticmethod
+    def getImageWithBoxes(cam, image_np, boxes, classes, scores, categIdx):
+        # Visualizar los resultados de la detección
+        vis_util.visualize_boxes_and_labels_on_image_array(
+        image_np,
+        np.squeeze(boxes),
+        np.squeeze(classes).astype(np.int32),
+        np.squeeze(scores),
+        categIdx,
+        max_boxes_to_draw=400, 
+        use_normalized_coordinates=True,
+        line_thickness=8)
+
+        return image_np
+    
+
+    # Genera una imagen a partir de frame + boxes|diseño + texto|diseño y lo publica en webserver
+    def sendStream(self,cam, image_np, boxes, classes, scores, categIdx):
+        img = CamStream.getImageWithBoxes(cam, image_np, boxes, classes, scores, categIdx)
+        cv2.imshow('object detection', img)
+    
+    def __start_server(self,appName='myapp'):
+        global webserver
+        if not webserver:
+            # self.app = Flask(appName)
+            print('HTTP server created')
+            ...
+            webserver = ServerThread(5000,CamStream.app)
+        else:
+            if not webserver.is_alive():
+                webserver = webserver.clone()
+            pass
+        webserver.start()
+        print('HTTP server starting')
+
+    def __stop_server(self):
+        global webserver
+        if webserver:
+            webserver.shutdown()
+            print('HTTP server stopped')
+        else:
+            print('HTTP server already stopped')
+  
 
     @staticmethod
     def mycast(o):
@@ -139,6 +323,31 @@ class CamStream():
             else:
                 repeatLast = 0
                 lastimg = img
+                try:
+                    numUbi = CamStream.ubis.getNumByCam(cam)
+                    coordUbi = CamStream.ubis.getCoordByCam(cam)
+                    rectUbi = CamStream.ubis.getYxyxByCam(cam)
+                    statUbi = CamStream.ubis.getLastStateByCam(cam)
+                    rectRN = CamStream.ubis.getLastDetectionByCam(cam)
+                    ###casteo a numpy
+                    numUbi = np.expand_dims( numUbi, axis=1)
+                    coordUbi = np.expand_dims( coordUbi, axis=1)
+                    rectUbi = np.array(rectUbi)
+                    #statUbi = np.expand_dims(statUbi[cam], axis=1)
+                    rectRN = np.array(rectRN)
+                    #Unir los datos a mostrar en pantalla
+                    #str_list = np.concatenate((numUbi , numUbi),axis=1)
+                    str_list = numUbi
+                    str_list = str_list.astype(str)
+                    str_list = str_list.tolist()
+                    
+                    drawBoxesLabels(img,rectUbi,str_list, thickness=6, color='Gold', mask_alpha=0,skip_labels=False)
+                    #vis_util.draw_bounding_boxes_on_image(img, rectUbi,display_str_list_list=str_list)
+
+                    drawBoxesLabels(img,rectRN,str_list, thickness=3, color='Aqua', mask_alpha=0,skip_labels=True)
+                    #vis_util.draw_bounding_boxes_on_image(img, rectRN, color='Aqua',thickness=3)
+                except BaseException as e:
+                    print("Problema al dibujar sobre imagen:",e)
             #print("Frame",fr)
             #frame = camera.get_frame()
             frame = cv2.imencode('.jpg', img)[1].tobytes()
@@ -171,74 +380,4 @@ class CamStream():
         #return Response(img, mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-    def __init__(self):
-        self.cams = None
-        self.camserver = None
-        self.stream = {}
-    
-    def setup(self, camserver, cams):
-        CamStream.camserver = camserver
-        CamStream.cams = cams
-       # if CamStream.cams is None:
-       #     # Detener stream
-       #     self.stopStream()
-       # else:
-        self.startStream()
-    
-    # Inicia webserver para streaming
-    def startStream(self):
-        print('Start streaming')
-        self.__start_server(__class__)
-        print('HTTP server started')
-
-    # Detiene webserver 
-    def stopStream(self):
-        print('Stop streaming')
-        self.__stop_server()
-        pass
-
-    # Genera una imagen a partir de frame + boxes|diseño + texto|diseño
-    @staticmethod
-    def getImageWithBoxes(cam, image_np, boxes, classes, scores, categIdx):
-        # Visualizar los resultados de la detección
-        vis_util.visualize_boxes_and_labels_on_image_array(
-        image_np,
-        np.squeeze(boxes),
-        np.squeeze(classes).astype(np.int32),
-        np.squeeze(scores),
-        categIdx,
-        max_boxes_to_draw=400, 
-        use_normalized_coordinates=True,
-        line_thickness=8)
-
-        return image_np
-    
-
-    # Genera una imagen a partir de frame + boxes|diseño + texto|diseño y lo publica en webserver
-    def sendStream(self,cam, image_np, boxes, classes, scores, categIdx):
-        img = CamStream.getImageWithBoxes(cam, image_np, boxes, classes, scores, categIdx)
-        cv2.imshow('object detection', img)
-    
-    def __start_server(self,appName='myapp'):
-        global webserver
-        if not webserver:
-            # self.app = Flask(appName)
-            print('HTTP server created')
-            ...
-            webserver = ServerThread(5000,CamStream.app)
-        else:
-            if not webserver.is_alive():
-                webserver = webserver.clone()
-            pass
-        webserver.start()
-        print('HTTP server starting')
-
-    def __stop_server(self):
-        global webserver
-        if webserver:
-            webserver.shutdown()
-            print('HTTP server stopped')
-        else:
-            print('HTTP server already stopped')
-    
     

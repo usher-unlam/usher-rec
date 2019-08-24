@@ -104,7 +104,7 @@ class CamServer():
         if self.stream is None:
             self.stream = CamStream()
         # Configurar servidor de stream e iniciar (no afecta si ya se esta ejecutando)
-        self.stream.setup(self, self.cams)
+        self.stream.setup(self)
         # Inicia servidor de stream 
         # self.stream.startStream() #no es necesario
         # t.sleep(15)

@@ -296,6 +296,7 @@ class Ubicacion():
         self.DEF_IGNORE_CHAR = ignoreChar
         self.ocupyState = laststat
         self.states = {} #histórico de estados de ocupación
+        self.lastRect = {} #rectangulos reconocidos por RN en ultimos frames agregados (addDetection)
         self.cams = cams
         # Obtener referencias de cámaras x ubicacion, matrices [coordY,coordX] / [Ymin,Xmin,Ymax,Xmax] x cámara
         self.ubiCam, self.camMinFrame, self.camNum, self.camWeight, self.camCoord, self.camYXYX = cams.getUbicacionesFromCams()
@@ -321,6 +322,43 @@ class Ubicacion():
     def getLastEval(self):
         return self.tlastEval
 
+    def getNumByCam(self, cam=""):
+        if cam == "":
+            return self.camNum
+        if cam not in self.camNum:
+            return np.array([])
+        return self.camNum[cam]
+
+    def getCoordByCam(self, cam=""):
+        if cam == "":
+            return self.camCoord
+        if cam not in self.camCoord:
+            return np.array([])
+        return self.camCoord[cam]
+
+    def getYxyxByCam(self, cam=""):
+        if cam == "":
+            return self.camYXYX
+        if cam not in self.camYXYX:
+            return np.array([])
+        return self.camYXYX[cam]
+
+    ''' Devuelve un dict con la última detección hecha, separado por cámaras y un timepo "update" '''
+    def getLastDetectionByCam(self, cam=""):
+        if cam == "":
+            return self.lastRect
+        if cam not in self.lastRect:
+            return np.array([])
+        return self.lastRect[cam]
+        
+    def getLastStateByCam(self, cam=""):
+        if cam == "":
+            return self.states
+        if cam not in self.states:
+            return np.array([])
+        return self.states[cam]
+        
+
     ''' Agregar reconocimiento y evaluar estado contra ubicaciones'''
     def addDetection(self, rect):
         # self.camMinFrame['cam2'] = [[145, 107]]
@@ -340,20 +378,23 @@ class Ubicacion():
                 r = np.array(r)
                 ubiCoord = np.array(self.camCoord[k])
                 ubiYXYX = np.array(self.camYXYX[k])
-        ##TODO: ¿calcular centro y dimensiones de forma matricial?
-                                #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
-        #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
-        #                            rcent[k].append(cbox)
-        #                            dbox = (ymax-ymin,xmax-xmin)
-        #                            rdims[k].append(dbox) #dimension: (alto,ancho)
-        # 
-                ##obtengo ubicaciones por cámara
-
+            ##TODO: ¿calcular centro y dimensiones de forma matricial?
+                                    #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
+            #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
+            #                            rcent[k].append(cbox)
+            #                            dbox = (ymax-ymin,xmax-xmin)
+            #                            rdims[k].append(dbox) #dimension: (alto,ancho)
+            # 
+                ##evaluar estado para esta cámara
                 est = self.__evaluateOcupy(self.camNum[k],ubiYXYX,ubiCoord, self.camMinFrame[k], r)
                 print("Ubicaciones",k,"\n",est)
+                #almacenar estado
                 self.states[k]["upd"].append(update)
                 self.states[k]["stat"].append(est)
 
+        #Actualizar último rectangulo agregado
+        self.lastRect = rect
+        self.lastRect["update"] = update
 
     def __evaluateOcupy(self, ubiN, ubiR, ubiC, ubiMin, rect1):
         # coord1 = RN.identify(rect1, ubiMin)
