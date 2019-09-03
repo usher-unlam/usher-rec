@@ -9,7 +9,11 @@ from annotations.classes.queryimage import QueryImage
 
 VIDEO_EXTENSION = ['.mov', '.avi', '.mpeg', '.mp4']
 VIDEO_ROTATE = 0
-VIDEO_STEP = 90
+VIDEO_STEP = 45
+# EXAMPLE GRAY "cv2.COLOR_BGR2GRAY"
+# EXAMPLE HSV "cv2.COLOR_BGR2HSV"
+# EXAMPLE RGB ""
+COLOR = "cv2.COLOR_BGR2HSV"
 
 PATH_IN_IMAGES = "D:/proyecto/usher-rec/annotations/IN/"
 PATH_OUT_IMAGES = "D:/proyecto/usher-rec/annotations/OUT/"
@@ -58,6 +62,8 @@ def open_videos_frames(path_in, path_out, filetype_list, rotate):
                         if rotate:
                             frame = cv2.transpose(frame, frame)
                             frame = cv2.flip(frame, 1)
+                        if not COLOR is "":
+                            frame = cv2.cvtColor(frame, COLOR)
                         frame_name = JPG_VOC2012_OUT + video.basename + '_' + str('{0:0{width}}'.format(count_frame, width=10)) + '.jpg'
                         cv2.imwrite(frame_name, frame)
                         print("Create frame : " + os.path.splitext(os.path.basename(frame_name))[0])
