@@ -1,7 +1,3 @@
-# 
-
-One Paragraph of project description goes here
-
 ## Configuración de entrenamiento en Nube
 
 Las siguientes instrucciones definen bajo Ubuntu 18.10 la creacion del espacio de trabajo para crear los modelos de entrenamiento en Google Cloud
