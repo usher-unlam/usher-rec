@@ -1,9 +1,7 @@
 ## Configuración de entrenamiento en Nube
-
 Las siguientes instrucciones definen bajo Ubuntu 18.10 la creacion del espacio de trabajo para crear los modelos de entrenamiento en Google Cloud
 
 ### Prerequisitos
-
 Primero instalaremos Anaconda y aceptaremos todos los mensajes
 ```
 cd /tmp
@@ -27,8 +25,7 @@ Considerar que el espacio de trabajo de la guia es $HOME/Workspace
 
 
 ### Complementos
-Una vez iniciado el entorno virtual con Anaconda (preferentemente Python3) instalaremos todos los complementos que se mencionan en la [guia de instalación] de Object Detection de Tensorflow
-[Dropwizard](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md) los cuales son
+Una vez iniciado el entorno virtual con Anaconda (preferentemente Python3) instalaremos todos los complementos que se mencionan en la [guia de instalación](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md) de Object Detection de Tensorflow los cuales son:
 
 ```
 pip install tensorflow protobuf Cython contextlib2 pillow jupyter matplotlib filelock
@@ -41,7 +38,6 @@ sudo dpkg -i packages-microsoft-prod.deb && sudo apt-get install apt-transport-h
 
 ### Repositorios
 Crearemos la carpeta de espacio de trabajo y luego tendremos que clonar y modificar algunos repositorios los cuales son:
-
 ```
 mkdir $HOME/Workspace && cd $HOME/Workspace && mkdir google && cd google
 sudo apt-get update && sudo apt-get install git-core && git --version
@@ -65,11 +61,12 @@ Verificamos si todo salio bien
 python object_detection/builders/model_builder_test.py
 ```
 
-sudo apt-get -y install build-essential checkinstall libx11-dev libxext-dev zlib1g-dev libpng-dev libjpeg-dev libfreetype6-dev libxml2-dev
+
 
 ### Otras herramientas
 Imagemagick es una potente herramienta para editar imagenes. Si la desean instalar pueden correr el siguiente script en la terminal
 ```
+sudo apt-get -y install build-essential checkinstall libx11-dev libxext-dev zlib1g-dev libpng-dev libjpeg-dev libfreetype6-dev libxml2-dev
 sudo apt remove -y imagemagick
 sudo apt-get -y build-dep imagemagick
 mkdir $HOME/Workspace/imagemagick_build && cd $HOME/Workspace/imagemagick_build
@@ -115,7 +112,6 @@ python models/research/object_detection/dataset_tools/create_pascal_tf_record.py
 ```
 
 ### Para crear el record de evaluacion
-
 ```
 python models/research/object_detection/dataset_tools/create_pascal_tf_record.py \
    	--data_dir=$HOME/Workspace/neuralfix_usher/package_cdbsas_01/eval \
@@ -129,7 +125,6 @@ python models/research/object_detection/dataset_tools/create_pascal_tf_record.py
 
 ### Configurar Object Detection para entrenar en a nube
 Luego tenemos que generar los paquetes que se subiran a Google Cloud con Object Detection configurado
-
 ```
 cd $HOME/Workspace/google/models/research/ 
 bash object_detection/dataset_tools/create_pycocotools_package.sh /tmp/pycocotools
@@ -137,6 +132,7 @@ python setup.py sdist
 (cd slim && python setup.py sdist)
 cp -r /tmp/pycocotools/pycocotools-2.0.tar.gz $HOME/Workspace/google/models/research/dist
 ```
+
 Necesitaremos el paquete de Google SDK para poder acceder desde la API a los servicios de Google Cloud.
 Opcionalmente se decidio usar el SDK en Python. Ustedes tienen libertad en cual usar
 ```
@@ -176,7 +172,7 @@ gcloud ml-engine jobs submit training neuralfix_usher_cd_bsas_01_01_`date +%m_%d
    --eval_dir=gs://neuralfix_usher_cd_bsas_01/train/eval \
    --model_dir=gs://neuralfix_usher_cd_bsas_01/train
 ```
-Es importante recordar que cloud.yml tiene la version de modelos de tensorflow y debe coninsidir con la version de runtime que ejecutaremos
+* Es importante recordar que cloud.yml tiene la version de modelos de tensorflow y debe coninsidir con la version de runtime que ejecutaremos
 
 
 Para visualizar los resultados podemos ver la consola de Log o Tensorboard
@@ -185,7 +181,7 @@ https://console.cloud.google.com/ai-platform/jobs?project=xxxxx-xxxxxxxxx-000000
 tensorboard --logdir=gs://neuralfix_usher_cd_bsas_01
 ```
 
-Descargar modelos entrenados
+## Descargar modelos entrenados
 
 Una vez realizado el entrenamiento con est script podremos descargar los modelos segun el STEP deseado y obtener el modelo de inferencia:
 ```
