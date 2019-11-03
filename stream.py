@@ -139,11 +139,11 @@ webserver = None
 class ServerThread(Thread):
     port = 5000
 
-    def __init__(self, port=5000, app=None):
+    def __init__(self, port=5000, app=None, template_folder='templates'):
         Thread.__init__(self,name="StreamServerThread")
         self.port = port
         if app is None:
-            self.app = Flask("ServerThread")
+            self.app = Flask("ServerThread",template_folder=template_folder)
         else:
             self.app = app
         #self.app.name = appName
@@ -170,16 +170,18 @@ class ServerThread(Thread):
 
 
 class CamStream():
-    app = Flask("CamStream")
+    app = Flask("CamStream",template_folder='templates')
     camserver = None
     cams = None
     ubis = None
     lastStCam = ""
 
-    def __init__(self):
+    def __init__(self,template_folder='templates'):
         self.cams = None
         self.camserver = None
         self.stream = {}
+        self.template_folder = template_folder
+        self.app.template_folder = self.template_folder
     
     def setup(self, camserver):
         CamStream.camserver = camserver
@@ -236,8 +238,12 @@ class CamStream():
             if not webserver.is_alive():
                 webserver = webserver.clone()
             pass
-        webserver.start()
-        print('HTTP server starting')
+        # solo iniciar thread si no esta vivo
+        if not webserver.is_alive():
+            print('HTTP server starting')
+            webserver.start()
+        else:
+            print('HTTP server still running')
 
     def __stop_server(self):
         global webserver
@@ -261,7 +267,7 @@ class CamStream():
         """Root home page."""
         try:
             html = render_template('index.html')
-        except:
+        except BaseException as ex:
             html = ('<html><head></head><body><ul>'
                 +'<li><a href="/camserver">Estado de Servidor CamServer</a></li>'
                 +'<li><a href="/cameras">Estado de Camaras</a></li>'
@@ -275,11 +281,17 @@ class CamStream():
         """Live Video streaming home page."""
         try:
             html = render_template('live.html')
-        except:
-            html = ('<html><head></head><body><ul>'
-                +'<li><a href="/camserver">Estado de Servidor CamServer</a></li>'
-                +'<li><a href="/cameras">Estado de Camaras</a></li>'
-                +'</ul><h4>ERROR MOSTRANDO VIDEO EN VIVO</h4></body></html>')
+        except BaseException as ex:
+            html = (
+'''<html><head></head>
+<body>
+    <h4>ERROR MOSTRANDO VIDEO EN VIVO</h4>
+    <ul>
+    <li><a href="/camserver">Estado de Servidor CamServer</a></li>
+    <li><a href="/cameras">Estado de Camaras</a></li>
+    <li><a href="/live">Ver video en vivo</a></li>
+    </ul>
+</body></html>''')
         return html
         #return jsonify(CamStream.camserver.getStatus())
 
@@ -307,7 +319,7 @@ class CamStream():
     def gen(cam):
         """Video streaming generator function."""
         #fr=0
-        FRM_REPEAT_BEFORE_ERROR = 10
+        FRM_REPEAT_BEFORE_ERROR = 100
         repeatLast = 0
         lastimg = Camera.error_img
         img = None

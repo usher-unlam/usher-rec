@@ -4,8 +4,8 @@ import sys
 import os
 import cv2.cv2 as cv2
 
-import ubicacion as ubi
 import conector as cn
+import ubicacion as ubi
 from stream import CamStream
 
 import time as t
@@ -33,6 +33,7 @@ class CamServer():
         # Iniciar red neuronal
         PATH_TO_CKPT = os.path.join('modelo_congelado','frozen_inference_graph.pb')
         PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
+        self.PATH_TO_TEMPLATES= os.path.join(os.path.dirname(os.path.realpath(__file__)),'templates')
         #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
         self.rn = None
@@ -102,7 +103,7 @@ class CamServer():
 
         #iniciar servidor de stream (webserver)
         if self.stream is None:
-            self.stream = CamStream()
+            self.stream = CamStream(self.PATH_TO_TEMPLATES)
         # Configurar servidor de stream e iniciar (no afecta si ya se esta ejecutando)
         self.stream.setup(self)
         # Inicia servidor de stream 
@@ -232,8 +233,9 @@ class CamServer():
 
 if __name__ == "__main__":
     ##TODO: recibir lo siguiente como parámetros de entrada
-    serverName = "SVR1"
     serverName = "TEST"
+    serverName = "SVR2"
+    serverName = "SVR1"
     dbConfig = {'user':"usher",
                 'passwd':"usher101",
                 'svr': "usher.sytes.net",
