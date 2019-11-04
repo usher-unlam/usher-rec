@@ -387,8 +387,10 @@ class CamStream():
         if cam == "":
             return Response(None,
                             400)
+        else:
+            cam = cam.lower()
         #return "./" + cam + "/." + jsonify(stCam) 
-        return Response(CamStream.gen(cam), mimetype='multipart/x-mixed-replace; boundary=frame')
+            return Response(CamStream.gen(cam), mimetype='multipart/x-mixed-replace; boundary=frame')
         #return Response(img, mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
