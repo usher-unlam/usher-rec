@@ -13,10 +13,9 @@ from object_detection.utils import visualization_utils as vis_util
 import threading
 
 class RN():
-    def __init__(self, ckptPB="", labelsPBTXT="", testIMGS=[]):
+    def __init__(self, ckptPB="", labelsPBTXT=""):
         self.PATH_TO_CKPT = ckptPB
         self.PATH_TO_LABELS = labelsPBTXT
-        self.TEST_IMAGE_PATHS = testIMGS
         self.IMAGE_SIZE = (12, 8)
         self.NUM_CLASSES = 90
         #variables detección por cámara
@@ -28,37 +27,41 @@ class RN():
 
     # Proceso extenso paralelizado con thread (demora ~33 segundos)
     def initialize(self):
-        self.working.acquire()
+        if not self.working.locked():
+            self.working.acquire()
         print('RN init-start ', time.now())
-        self.detection_graph = tf.Graph()
-        with self.detection_graph.as_default():
-            od_graph_def = tf.GraphDef()
-            with tf.gfile.GFile(self.PATH_TO_CKPT, 'rb') as fid:
-                serialized_graph = fid.read()
-                od_graph_def.ParseFromString(serialized_graph)
-                tf.import_graph_def(od_graph_def, name='')
-        
-        label_map = label_map_util.load_labelmap(self.PATH_TO_LABELS)
-        categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=self.NUM_CLASSES, use_display_name=True)
-        self.category_index = label_map_util.create_category_index(categories)
+        try:
+            self.detection_graph = tf.Graph()
+            with self.detection_graph.as_default():
+                od_graph_def = tf.GraphDef()
+                with tf.gfile.GFile(self.PATH_TO_CKPT, 'rb') as fid:
+                    serialized_graph = fid.read()
+                    od_graph_def.ParseFromString(serialized_graph)
+                    tf.import_graph_def(od_graph_def, name='')
+            
+            label_map = label_map_util.load_labelmap(self.PATH_TO_LABELS)
+            categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=self.NUM_CLASSES, use_display_name=True)
+            self.category_index = label_map_util.create_category_index(categories)
 
-        with self.detection_graph.as_default():
-            with tf.Session(graph=self.detection_graph) as self.sess:
-                self.sess = tf.Session()
-                self.image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
-                # Each box represents a part of the image where a particular object was detected.
-                self.detection_boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
-                # Each score represent how level of confidence for each of the objects.
-                # Score is shown on the result image, together with the class label.
-                self.detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
-                self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
-                print("Detection Classes:",self.detection_classes)
-                self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
-        print('RN sess default create ', time.now())
-        # Ejecutar primer detección ¿para la construccion de la RN? Demora mucho la primer detección
-        initFrame = { "init": np.zeros((640, 480, 3)) }
-        self.working.release()
-        self.detect(initFrame)
+            with self.detection_graph.as_default():
+                with tf.Session(graph=self.detection_graph) as self.sess:
+                    self.sess = tf.Session()
+                    self.image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
+                    # Each box represents a part of the image where a particular object was detected.
+                    self.detection_boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
+                    # Each score represent how level of confidence for each of the objects.
+                    # Score is shown on the result image, together with the class label.
+                    self.detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
+                    self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
+                    print("Detection Classes:",self.detection_classes)
+                    self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+            print('RN sess default create ', time.now())
+             # Ejecutar primer detección ¿para la construccion de la RN? Demora mucho la primer detección
+            initFrame = { "init": np.zeros((640, 480, 3)) }
+            self.working.release()
+            self.detect(initFrame)
+        except BaseException as e:
+            print('RN sess default create ERROR: ', e, time.now())
         print('RN init-end ', time.now())
         ##TODO: comprobar errores en carga de RN
     

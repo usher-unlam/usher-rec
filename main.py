@@ -37,7 +37,7 @@ class CamServer():
         #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
         self.rn = None
-        self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS,TEST_IMAGE_PATHS)
+        self.rn = ubi.RN(PATH_TO_CKPT,PATH_TO_LABELS)
         # Inicializado servidor de stream (webserver)
         self.stream = None
         
