@@ -33,7 +33,7 @@ class CamServer():
         # Iniciar red neuronal
         PATH_TO_CKPT = os.path.join('modelo_congelado','frozen_inference_graph.pb')
         PATH_TO_LABELS = os.path.join('configuracion', 'label_map.pbtxt')
-        self.PATH_TO_TEMPLATES= os.path.join(os.path.dirname(os.path.realpath(__file__)),'templates')
+        self.PATH_TO_TEMPLATES= os.path.join(os.getcwd(),'templates')
         #PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
         #TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
         self.rn = None
@@ -250,6 +250,10 @@ if __name__ == "__main__":
 
     PATH_TO_TEST_IMAGES_DIR = 'img_pruebas'
     TEST_IMAGE_PATHS = [ os.path.join('img_pruebas', 'image{}.jpg'.format(i)) for i in range(1, 3) ]
+
+    # setear path de ejecución al local del main (evita inconvenientes con VS Code)
+    print("Cambio de CurrentDir:",os.getcwd(),">",os.path.dirname(os.path.realpath(__file__)))
+    os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
     svr = CamServer(serverName, dbConfig) #(sourceDB|sourceFile)
     svr.runService()
