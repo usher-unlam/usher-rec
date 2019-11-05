@@ -13,52 +13,55 @@ from object_detection.utils import visualization_utils as vis_util
 import threading
 
 class RN():
-    def __init__(self, ckptPB="", labelsPBTXT="", testIMGS=[]):
+    def __init__(self, ckptPB="", labelsPBTXT=""):
         self.PATH_TO_CKPT = ckptPB
         self.PATH_TO_LABELS = labelsPBTXT
-        self.TEST_IMAGE_PATHS = testIMGS
         self.IMAGE_SIZE = (12, 8)
         self.NUM_CLASSES = 90
         #variables detección por cámara
         self.boxes = []; self.scores = []; self.classes = []; self.num = []
         
         self.working = threading.Lock()
-        self.init = threading.Thread(target=self.initialize) #, args=(index,)
+        self.init = threading.Thread(target=self.initialize,name="RNThread") #, args=(index,)
         self.init.start()
 
     # Proceso extenso paralelizado con thread (demora ~33 segundos)
     def initialize(self):
-        self.working.acquire()
+        if not self.working.locked():
+            self.working.acquire()
         print('RN init-start ', time.now())
-        self.detection_graph = tf.Graph()
-        with self.detection_graph.as_default():
-            od_graph_def = tf.GraphDef()
-            with tf.gfile.GFile(self.PATH_TO_CKPT, 'rb') as fid:
-                serialized_graph = fid.read()
-                od_graph_def.ParseFromString(serialized_graph)
-                tf.import_graph_def(od_graph_def, name='')
-        
-        label_map = label_map_util.load_labelmap(self.PATH_TO_LABELS)
-        categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=self.NUM_CLASSES, use_display_name=True)
-        self.category_index = label_map_util.create_category_index(categories)
+        try:
+            self.detection_graph = tf.Graph()
+            with self.detection_graph.as_default():
+                od_graph_def = tf.GraphDef()
+                with tf.gfile.GFile(self.PATH_TO_CKPT, 'rb') as fid:
+                    serialized_graph = fid.read()
+                    od_graph_def.ParseFromString(serialized_graph)
+                    tf.import_graph_def(od_graph_def, name='')
+            
+            label_map = label_map_util.load_labelmap(self.PATH_TO_LABELS)
+            categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=self.NUM_CLASSES, use_display_name=True)
+            self.category_index = label_map_util.create_category_index(categories)
 
-        with self.detection_graph.as_default():
-            with tf.Session(graph=self.detection_graph) as self.sess:
-                self.sess = tf.Session()
-                self.image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
-                # Each box represents a part of the image where a particular object was detected.
-                self.detection_boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
-                # Each score represent how level of confidence for each of the objects.
-                # Score is shown on the result image, together with the class label.
-                self.detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
-                self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
-                print("Detection Classes:",self.detection_classes)
-                self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
-        print('RN sess default create ', time.now())
-        # Ejecutar primer detección ¿para la construccion de la RN? Demora mucho la primer detección
-        initFrame = { "init": np.zeros((640, 480, 3)) }
-        self.working.release()
-        self.detect(initFrame)
+            with self.detection_graph.as_default():
+                with tf.Session(graph=self.detection_graph) as self.sess:
+                    self.sess = tf.Session()
+                    self.image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
+                    # Each box represents a part of the image where a particular object was detected.
+                    self.detection_boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
+                    # Each score represent how level of confidence for each of the objects.
+                    # Score is shown on the result image, together with the class label.
+                    self.detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
+                    self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
+                    print("Detection Classes:",self.detection_classes)
+                    self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+            print('RN sess default create ', time.now())
+             # Ejecutar primer detección ¿para la construccion de la RN? Demora mucho la primer detección
+            initFrame = { "init": np.zeros((640, 480, 3)) }
+            self.working.release()
+            self.detect(initFrame)
+        except BaseException as e:
+            print('RN sess default create ERROR: ', e, time.now())
         print('RN init-end ', time.now())
         ##TODO: comprobar errores en carga de RN
     
@@ -112,7 +115,7 @@ class RN():
                 # for index, value in enumerate(self.classes[k][0]):
                 #     if self.scores[k][0,index] > scoreFilter:
                 #         if self.category_index.get(value).get('name') == classFilter:
-                            print("Class Value for ",classFilterName,":", classFilterId, box[index])
+                            #print("Class Value for ",classFilterName,":", classFilterId, box[index])
                             # ymin = (int(box[index,0] * height))
                             # xmin = (int(box[index,1] * width))
                             # ymax = (int(box[index,2] * height))
@@ -296,6 +299,7 @@ class Ubicacion():
         self.DEF_IGNORE_CHAR = ignoreChar
         self.ocupyState = laststat
         self.states = {} #histórico de estados de ocupación
+        self.lastRect = {} #rectangulos reconocidos por RN en ultimos frames agregados (addDetection)
         self.cams = cams
         # Obtener referencias de cámaras x ubicacion, matrices [coordY,coordX] / [Ymin,Xmin,Ymax,Xmax] x cámara
         self.ubiCam, self.camMinFrame, self.camNum, self.camWeight, self.camCoord, self.camYXYX = cams.getUbicacionesFromCams()
@@ -321,6 +325,43 @@ class Ubicacion():
     def getLastEval(self):
         return self.tlastEval
 
+    def getNumByCam(self, cam=""):
+        if cam == "":
+            return self.camNum
+        if cam not in self.camNum:
+            return np.array([])
+        return self.camNum[cam]
+
+    def getCoordByCam(self, cam=""):
+        if cam == "":
+            return self.camCoord
+        if cam not in self.camCoord:
+            return np.array([])
+        return self.camCoord[cam]
+
+    def getYxyxByCam(self, cam=""):
+        if cam == "":
+            return self.camYXYX
+        if cam not in self.camYXYX:
+            return np.array([])
+        return self.camYXYX[cam]
+
+    ''' Devuelve un dict con la última detección hecha, separado por cámaras y un timepo "update" '''
+    def getLastDetectionByCam(self, cam=""):
+        if cam == "":
+            return self.lastRect
+        if cam not in self.lastRect:
+            return np.array([])
+        return self.lastRect[cam]
+        
+    def getLastStateByCam(self, cam=""):
+        if cam == "":
+            return self.states
+        if cam not in self.states:
+            return np.array([])
+        return self.states[cam]
+        
+
     ''' Agregar reconocimiento y evaluar estado contra ubicaciones'''
     def addDetection(self, rect):
         # self.camMinFrame['cam2'] = [[145, 107]]
@@ -330,9 +371,9 @@ class Ubicacion():
         # rect = {'cam2': [[163, 279, 441, 484], [143, 292, 289, 482], [ 87, 201, 295, 338], [108, 323, 276, 500], [107, 198, 252, 305]]}
         #for u,c in self.ubicacionesCam:
         #    cam = c[0]
-        print("ubiCoord:\n",self.camCoord['cam1'])
-        print("ubiYXYX:\n",self.camYXYX['cam1'])
-        print("rect:\n",rect)
+        # print("ubiCoord:\n",self.camCoord['cam1'])
+        # print("ubiYXYX:\n",self.camYXYX['cam1'])
+        # print("rect:\n",rect)
         update = time.now()
         for k,r in rect.items():
             #recorro camaras y sus rectángulos reconocidos
@@ -340,59 +381,71 @@ class Ubicacion():
                 r = np.array(r)
                 ubiCoord = np.array(self.camCoord[k])
                 ubiYXYX = np.array(self.camYXYX[k])
-        ##TODO: ¿calcular centro y dimensiones de forma matricial?
-                                #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
-        #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
-        #                            rcent[k].append(cbox)
-        #                            dbox = (ymax-ymin,xmax-xmin)
-        #                            rdims[k].append(dbox) #dimension: (alto,ancho)
-        # 
-                ##obtengo ubicaciones por cámara
-
+            ##TODO: ¿calcular centro y dimensiones de forma matricial?
+                                    #Prueba con (Ycentro,Xcentro) y (Alto,Ancho)
+            #                            cbox = (int((ymin+ymax)/2),int((xmin+xmax)/2)) #centro:(Y,X)
+            #                            rcent[k].append(cbox)
+            #                            dbox = (ymax-ymin,xmax-xmin)
+            #                            rdims[k].append(dbox) #dimension: (alto,ancho)
+            # 
+                ##evaluar estado para esta cámara
                 est = self.__evaluateOcupy(self.camNum[k],ubiYXYX,ubiCoord, self.camMinFrame[k], r)
                 print("Ubicaciones",k,"\n",est)
+                #almacenar estado
                 self.states[k]["upd"].append(update)
                 self.states[k]["stat"].append(est)
 
+        #Actualizar último rectangulo agregado
+        self.lastRect = rect
+        self.lastRect["update"] = update
+
     def __evaluateOcupy(self, ubiN, ubiR, ubiC, ubiMin, rect1):
-        coord1 = RN.identify(rect1, ubiMin)
+        # coord1 = RN.identify(rect1, ubiMin)
         #calcular iou y overlap con YXYX de ubicaciones de la cámara
-        over1 = RN.compute_overlaps(rect1,ubiR)
-        print('Solapamiento YXYX:\n', over1)
+        # over1 = RN.compute_overlaps(rect1,ubiR)
+        # print('Solapamiento YXYX:\n', over1)
         #Calcular intersección con YXYX de ubicaciones de la cámara
         inter1 = RN.compute_intersection(rect1,ubiR)
-        print('Intersección YXYX:\n', inter1)
+        #print('Intersección YXYX:\n', inter1)
 
-        ##fusionar rectangulos con coord duplicadas
-        rect2,coord2 = RN.fusionDuplicatedId(rect1,coord1)
-        #calcular iou y overlap con YXYX de ubicaciones de la cámara
-        over2 = RN.compute_overlaps(rect2,ubiR)
-        print('Solapamiento YXYX:\n', over2)
-        #Calcular intersección con YXYX de ubicaciones de la cámara
-        inter2 = RN.compute_intersection(rect2,ubiR)
-        print('Intersección YXYX:\n', inter2)
+        # ##fusionar rectangulos con coord duplicadas
+        # rect2,coord2 = RN.fusionDuplicatedId(rect1,coord1)
+        # #calcular iou y overlap con YXYX de ubicaciones de la cámara
+        # over2 = RN.compute_overlaps(rect2,ubiR)
+        # print('Solapamiento YXYX:\n', over2)
+        # #Calcular intersección con YXYX de ubicaciones de la cámara
+        # inter2 = RN.compute_intersection(rect2,ubiR)
+        # print('Intersección YXYX:\n', inter2)
         
         # Definir ocupación de ubicación (ocupado/libre)
         est = np.zeros( (ubiR.shape[0],) )
-        # Ordenar coordenadas
-        coordtype = [('y', int), ('x', int)]
-        ordUbiC = np.sort(np.array(ubiC,dtype=coordtype),axis=0,order=['y','x'])
-        ordC = np.sort(np.array(coord2,dtype=coordtype),axis=0,order=['y','x'])
-        ordUbiC = np.squeeze(rfn.structured_to_unstructured(ordUbiC[['x']]),axis=None)
-        ordC = np.squeeze(rfn.structured_to_unstructured(ordC[['x']]),axis=None)
-        #print(ordUbiC)
-        #ordUbiC = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
-        #print(ordUbiC)
-        j = 0
-        for i,c in enumerate(ordUbiC):
-            while j<len(ordC) and bool(np.greater(c,ordC[j]).sum()):
+        # Reconocimiento usando INTERSECCION
+        for b in range(ubiR.shape[0]):
+            j = 0
+            while j<len(rect1) and inter1[j][b] < 0.5:
                 j += 1
-            if j == len(ordC):
-                break
-            if np.array_equal(c, ordC[j]):
-                print(c, "vs", ordC[j])
-                est[i] = 1
-                j += 1
+            if j<len(rect1):
+                est[b] = 1
+            
+        # # Ordenar coordenadas
+        # coordtype = [('y', int), ('x', int)]
+        # ordUbiC = np.sort(np.array(ubiC,dtype=coordtype),axis=0,order=['y','x'])
+        # ordC = np.sort(np.array(coord1,dtype=coordtype),axis=0,order=['y','x'])
+        # ordUbiC = np.squeeze(rfn.structured_to_unstructured(ordUbiC[['x']]),axis=None)
+        # ordC = np.squeeze(rfn.structured_to_unstructured(ordC[['x']]),axis=None)
+        # #print(ordUbiC)
+        # #ordUbiC = sorted(self.cams["cam2"].items(), key = lambda kv:(kv[1], kv[0]))
+        # #print(ordUbiC)
+        # j = 0
+        # for i,c in enumerate(ordUbiC):
+        #     while j<len(ordC) and bool(np.greater(c,ordC[j]).sum()):
+        #         j += 1
+        #     if j == len(ordC):
+        #         break
+        #     if np.array_equal(c, ordC[j]):
+        #         print(c, "vs", ordC[j])
+        #         est[i] = 1
+        #         j += 1
         return est
 
     # Devuelve la fecha/hora, el estado nuevo calculado, un bool indicando si cambió respecto al estado anterior
@@ -401,6 +454,7 @@ class Ubicacion():
         tCurrEval = time.now()
         tout = tCurrEval - delta(milliseconds=self.EVAL_LASTMILLIS)
         cambio = False
+
         if tout > self.tlastEval:
             evaluo = False
             ests = np.full( (len(self.camNum), self.count()), DEF_EMPTY_VAL ) #lleno de DEF_EMPTY_VAL
@@ -419,12 +473,13 @@ class Ubicacion():
                     promCam = (np.mean(est, axis=0) + 0.00001).round()
                     # Cargar estado/peso por cada ubicacion de camara
                     for ubi,prom,peso in zip(self.camNum[k],promCam,self.camWeight[k]):
-                        ests[c,ubi] = prom
+                        u = ubi - 1 # Corrección del índice de array vs número de banca
+                        ests[c,u] = prom
                         # inicializar columna de pesos en 0 (no puede hacerse antes x riesgo de división por 0)
-                        if not pesosInit[ubi]:
-                            pesos[:,ubi] = 0
-                            pesosInit[ubi] = 1
-                        pesos[c,ubi] = peso
+                        if not pesosInit[u]:
+                            pesos[:,u] = 0
+                            pesosInit[u] = 1
+                        pesos[c,u] = peso
                     evaluo = True
             if evaluo:
                 # Evaluar estados de una misma ubicacion (promedio ponderado redondeando 0.5 hacia arriba)
@@ -433,9 +488,12 @@ class Ubicacion():
                 # Convertir valor a texto/string, omitir ubicaciones no reconocidas
                 #estChar = np.array2string(currEval.astype(int),separator='')[1:-1].replace(str(DEF_EMPTY_VAL),self.DEF_IGNORE_CHAR)
                 estChar = np.char.replace(currEval.astype(int).astype(str),str(DEF_EMPTY_VAL),self.DEF_IGNORE_CHAR)
-            # Establece 'cambio' solo si difiere de estado anterior
-            # En este caso no se actualizaría el tstamp de 'estado' sino solo el 'update' del servidor
-            #cambio = not np.array_equal(self.ocupyState, estChar) 
+                ## Establece 'cambio' solo si difiere de estado anterior
+                ## En este caso no se actualizaría el tstamp de 'estado' sino solo el 'update' del servidor
+                #cambio = not np.array_equal(self.ocupyState, estChar) 
+            else:
+                # Si no se detecta algo válido, cambiar las bancas previamente ocupadas como libres
+                estChar = np.char.replace(self.ocupyState,'1',self.DEF_IGNORE_CHAR)
             cambio = True
             self.ocupyState = estChar.tolist()
         return self.tlastEval, self.ocupyState, cambio

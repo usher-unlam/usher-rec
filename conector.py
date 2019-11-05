@@ -30,6 +30,7 @@ class CamStatus(IntEnum):
     ERR_NOFILE = 10
     ERR_NOACCS = 11
 
+
 ''' 'nombre': 'cam1', 'minUbicacion': [ANCHOpx, ALTOpx], 
         'ip': '192.168.0.10', 'desc': 'camara del techo', 
         'ubicaciones': [
@@ -54,11 +55,30 @@ class Camaras():
         self.tlastTime = time.now() # (captura o escape)
         self.tlastCapt = time.now() # (solo captura)
     
+    def getStatus(self, cam=None):
+        stat2 = self.camstat.copy()
+        stat = {}
+        for c,v in stat2.items():
+            stat[c] = { "update": v[0],
+                "status": int(v[1]),
+                "statdesc": CamStatus(v[1]).name,
+                "statmsj": v[2] } #(time.now(), estado, msj)
+        if cam is None or cam == "":
+            return stat
+        return {} if not cam in stat else stat[cam]
+
     def getLastTime(self):
         return self.tlastTime
 
     def getLastCapture(self):
         return self.tlastCapt
+
+    def getLastFrame(self,cam=None):
+        if cam is None or cam == "":
+            return self.frames.copy()
+        if cam in self.frames: 
+            return self.frames[cam].copy()
+        return None
 
     @staticmethod
     def urlTest(host, port):
@@ -134,7 +154,7 @@ class Camaras():
         for cam in self.cams:
             if (not cam["nombre"] in self.camstat 
                 or self.camstat[cam["nombre"]][0] < tlimit):
-    ##TODO: Chequear si no es url (ej: 0 o "file.mp4")
+        ##TODO: Chequear si no es url (ej: 0 o "file.mp4")
                 url = urlparse(cam["url"])
                 if url.netloc != '':
                     out, msj = Camaras.urlTest(url.hostname,url.port)
@@ -145,17 +165,23 @@ class Camaras():
     def setCamStat(self,cam="",estado=CamStatus.OK, msj=""):
         self.camstat[cam] = (time.now(), estado, msj)
         #self.caps[cam] = None
-    ##TODO: guardar estado en base de datos
+        ##TODO: guardar estado en base de datos
         # es necesario eliminar caps ante cualquier error/falla
         if (estado != CamStatus.OK):
+            if (cam in self.caps and (not self.caps[cam] is None) 
+                and self.caps[cam].isOpened()):
+                # libera conexión con origen stream
+                self.caps[cam].release()
             self.caps[cam] = None
-    ##TODO: Loguear conexión fallida
+        ##TODO: Loguear conexión fallida
     
     def escapeFrame(self):
-        return self.captureFrame(False)
+        return self.captureFrame(True)
 
-    def captureFrame(self, saveTime=True):
+    def captureFrame(self, escapeFrame=False):
         #self.caps = []
+        # Guardar tlastTime si NO se escapa el frame
+        saveTime = not escapeFrame
         self.frames = {}
         self.tlastTime = time.now()
         if saveTime:
@@ -171,17 +197,26 @@ class Camaras():
                     if (not cam["nombre"] in self.caps 
                         or self.caps[cam["nombre"]] is None):
                         capture = cv2.VideoCapture(cam["url"])
-                        capture.set(3,640)
-                        capture.set(4,480)
+                        # Prueba de limitar tamano de frame
+                        capture.set(cv2.CAP_PROP_FRAME_WIDTH,640) #3
+                        capture.set(cv2.CAP_PROP_FRAME_HEIGHT,480) #4
+                        capture.set(cv2.CAP_PROP_FPS,30) # FPS esperados
                         self.caps[cam["nombre"]] = capture
 
                     if (self.caps[cam["nombre"]] 
                         and self.caps[cam["nombre"]].isOpened()):
-                        ret, image_np = self.caps[cam["nombre"]].read()
+                        ###ret, image_np = self.caps[cam["nombre"]].read()
+                        #solicitar frame
+                        ret = self.caps[cam["nombre"]].grab()
                         if ret:
-                            self.frames[cam["nombre"]] = image_np
                             #renovar estado OK de cámara
                             self.setCamStat(cam["nombre"], CamStatus.OK, "frame")
+                            # se puede evitar traer frame si no se hace stream de la camara
+                            if True or not escapeFrame:
+                                #obtener/recuperar frame solicitado
+                                ret, image_np = self.caps[cam["nombre"]].retrieve()
+                                if ret:
+                                    self.frames[cam["nombre"]] = image_np
                         else:
                             err = "No se recibió frame: " + cam["nombre"]
                             self.setCamStat(cam["nombre"], CamStatus.ERR_CV2CAP, err)
@@ -252,11 +287,13 @@ class DBSource(DataSource):
         if self.conn is None or not self.conn.is_connected():
             self.cursor = None
             try:
+                
                 self.conn = mysql.connector.connect(user=self.connData['user'], 
                                                     password=self.connData['passwd'],
                                                     host=self.connData['svr'],
                                                     database=self.connData['db'],
                                                     connection_timeout= self.tout['CONNECT'])
+               
         ##TODO: capturar errores SQL
                 if self.conn and self.conn.is_connected():
                     self.conn.config(connection_timeout=30)
@@ -291,6 +328,7 @@ class DBSource(DataSource):
                     if not reg is None and reg[0] > 0:
                         newVal = True
                         status = Status(reg[0])
+                    print("")    
                     print("Lee BBDD status",getattr(DBSource.readSvrStatus, 'update'),status)
                 except mysql.connector.Error as error:
                     print("Lee BBDD status","Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
@@ -362,10 +400,16 @@ class DBSource(DataSource):
           {'nro': 1, 'coord': [X1, Y1], 'size'}, 
           {'nro': 2, 'coord': [X2, Y2]}, 
         ]}] '''
-    def readCamInfo(self):
+    def readCamInfo(self, cameras):
         if self.connect():
             try:
-                self.cursor.execute("SELECT config FROM camara WHERE activa = true")
+                query = "SELECT config FROM camara WHERE activa = true"
+                if len(cameras) > 0:
+                    cameras_list = ','.join(['%s'] * len(cameras))
+                    query += " AND nombre in (%s)" % cameras_list
+                    self.cursor.execute(query, tuple(cameras))
+                else:
+                    self.cursor.execute(query)
                 reg = self.cursor.fetchall()
                 cams = list()
                 if not reg is None:
@@ -423,18 +467,22 @@ class DBSource(DataSource):
                                                 VALUES (%s, 255, %s, %s)
                                                 ON DUPLICATE KEY UPDATE tstamp=VALUES(tstamp), estadoUbicaciones=VALUES(estadoUbicaciones)""", 
                                                 (tnewState, newState, self.camsvr.nombre))
-                    print("ESTADO UBICACIONES: ",newState)
+                     
+                    #print("ESTADO UBICACIONES: ",newState)
                     # script = self.cursor.execute("""UPDATE estado SET tstamp=%s, estadoUbicaciones=%s 
                     #                             WHERE camserver = %s""", 
                     #                             (tnewState, newState, self.camsvr.nombre))
             ##TODO: capturar errores SQL
                     self.conn.commit()
+                    print("DATOS GRABADOS: ",tnewState, '{:7.7}'.format(newState) )  
                 except mysql.connector.Error as error:
                     print("Error de BBDD: {}".format(error), "(", self.connData['svr'], ")")
                 except BaseException as e:
                     print(time.now(), "Error desconocido grabando estado: ", e)
                 finally:
                     pass
+  
+
        
     def close(self):
         if self.conn and self.conn.is_connected():
