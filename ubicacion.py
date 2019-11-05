@@ -473,12 +473,13 @@ class Ubicacion():
                     promCam = (np.mean(est, axis=0) + 0.00001).round()
                     # Cargar estado/peso por cada ubicacion de camara
                     for ubi,prom,peso in zip(self.camNum[k],promCam,self.camWeight[k]):
-                        ests[c,ubi] = prom
+                        u = ubi - 1 # Corrección del índice de array vs número de banca
+                        ests[c,u] = prom
                         # inicializar columna de pesos en 0 (no puede hacerse antes x riesgo de división por 0)
-                        if not pesosInit[ubi]:
-                            pesos[:,ubi] = 0
-                            pesosInit[ubi] = 1
-                        pesos[c,ubi] = peso
+                        if not pesosInit[u]:
+                            pesos[:,u] = 0
+                            pesosInit[u] = 1
+                        pesos[c,u] = peso
                     evaluo = True
             if evaluo:
                 # Evaluar estados de una misma ubicacion (promedio ponderado redondeando 0.5 hacia arriba)
