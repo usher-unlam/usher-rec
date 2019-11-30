@@ -225,6 +225,7 @@ class CamStream():
     # Genera una imagen a partir de frame + boxes|diseño + texto|diseño y lo publica en webserver
     def sendStream(self,cam, image_np, boxes, classes, scores, categIdx):
         img = CamStream.getImageWithBoxes(cam, image_np, boxes, classes, scores, categIdx)
+        
         cv2.imshow('object detection', img)
     
     def __start_server(self,appName='myapp'):

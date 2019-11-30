@@ -4,6 +4,7 @@
 from datetime import datetime as time
 from datetime import timedelta as delta
 import numpy as np
+import cv2
 from numpy.lib import recfunctions as rfn
 import tensorflow as tf
 # Importación del módulo de detección de objetos.
@@ -92,7 +93,9 @@ class RN():
         for k,f in frames.items():
             if len(f) > 0:
                 # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+                
                 image_np_expanded = np.expand_dims(f, axis=0)
+                
                 ### Actual detection.      
                 ##(boxes, scores, classes, num) = sess.run([detection_boxes, detection_scores, detection_classes, num_detections],feed_dict={image_tensor: image_np_expanded})
                 # Actual detection      

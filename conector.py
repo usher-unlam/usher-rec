@@ -216,6 +216,7 @@ class Camaras():
                                 #obtener/recuperar frame solicitado
                                 ret, image_np = self.caps[cam["nombre"]].retrieve()
                                 if ret:
+                                    image_np = cv2.rotate(image_np, rotateCode=cv2.ROTATE_90_CLOCKWISE)
                                     self.frames[cam["nombre"]] = image_np
                         else:
                             err = "No se recibió frame: " + cam["nombre"]

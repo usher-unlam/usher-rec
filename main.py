@@ -226,7 +226,9 @@ class CamServer():
         #    else:
         #        print("Error: " + e.message)
         except KeyboardInterrupt as e:
+            exit(1)
             print(time.now(), "Detenido por teclado.")
+            
             
     #    except BaseException as e:
     #        print(time.now(), "Error desconocido: ", e)
